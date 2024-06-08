@@ -9,6 +9,17 @@ class term:
         self.x_i = i
         self.const = const
     
+    def __eq__(self, other):
+        if not isinstance(other, term):
+            return False
+        if self.coeff != other.coeff:
+            return False
+        if self.x_i != other.x_i:
+            return False
+        if self.const != other.const:
+            return False
+        return True
+
     def eval(self, x: Scalar):
         return self.coeff * x + self.const
 
@@ -33,7 +44,7 @@ class term:
     
 class monomial:
     def __init__(self, coeff: Scalar, terms: list[term]) -> None:
-        self.terms = terms
+        self.terms: list[term] = terms
         self.coeff = coeff
 
     def __mul__(self, other):
@@ -46,6 +57,18 @@ class monomial:
     def __repr__(self):
         return self.__str__()
     
+    def __eq__(self, other):
+        if not isinstance(other, monomial):
+            return False
+        if self.coeff != other.coeff:
+            return False
+        if len(self.terms) != len(other.terms):
+            return False
+        for i in range(len(self.terms)):
+            if self.terms[i] != other.terms[i]:
+                return False
+        return True
+
     def mult(self, n):
         self.coeff *= n
 
@@ -130,6 +153,8 @@ class polynomial:
         """  
         evaluate variable index i with x_i
         """
+        if i == 0:
+            raise ValueError("i should start from 1")
         new_terms_poly = []
         new_constant = self.constant
         for mono in self.terms:
@@ -194,7 +219,7 @@ class polynomial:
         Simplify polynomial
         
         Note:
-        p1 can be simplified to p2
+        for example, p1 can be simplified to p2
         p1: 6 * ((3 * x_1 + 4) * (1 * x_1 + 2)) + 3 * ((0 * x_1 + 5) * (1 * x_1 + 2)) + 0
         p2: 6 * ((3 * x_1 + 4) * (1 * x_1 + 2)) + 15 * ((1 * x_1 + 2)) + 0
         """
@@ -230,7 +255,10 @@ class polynomial:
     def get_expansion(self) -> 'UnivariateExpansion':
         """  
         Expand polynomial to univariate expansion
-        Note: 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) expands to 20 * x^0 + 55 * x^1 + 30 * x^2.
+        Note: 
+        1. 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) expands to 20 * x^0 + 55 * x^1 + 30 * x^2.
+        2. 5 * ((3 * x_2 + 4)) + 15 ((3 * x_2 + 4)) + 0 expands to 20 * x^0 + 80 * x^1.
+            terms expands to [20, 15] and [60, 45] respectively.
         """
         res = UnivariateExpansion([Scalar.zero()], 0)
         for t in self.terms:
@@ -287,6 +315,18 @@ class polynomial:
 
     def __repr__(self):
         return self.__str__()
+    
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, polynomial):
+            return False
+        if len(self.terms) != len(value.terms):
+            return False
+        for i in range(len(self.terms)):
+            if self.terms[i] != value.terms[i]:
+                return False
+        if self.constant != value.constant:
+            return False
+        return True
 
 class UnivariateExpansion:
     def __init__(self, coeffs: list[Scalar], deg: int) -> None:
@@ -395,14 +435,29 @@ def chi_w(w: list[Scalar]):
     return mono
 
 # for f(x) in gkr
-def chi_w_from_k(w: list[Scalar], k: int):
+def chi_w_from_k(w: list[Scalar], k: int) -> monomial:
+    """  
+    params:
+    w: {0, 1}^v
+    k: index of x_i, k = 1 means x_1
+
+    return:
+    multilinear extension of chi_w
+
+    Example:
+    w = [1, 0, 1]
+    k = 2
+    Given bn128, the output is:
+    1 * ((1 * x_2 + 0) * (21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_3 + 1) * (1 * x_4 + 0))
+    """
     prod = []
     for i, w_i in enumerate(w):
         if w_i == Scalar.zero():
             prod.append(term(Scalar(-1), i + k, Scalar(1)))
         elif w_i == Scalar.one():
             prod.append(term(Scalar(1), i + k, Scalar(0)))
-    
+        else:
+            raise ValueError("Invalid value in w, should be 0 or 1")
     mono = monomial(Scalar.one(), prod)
     return mono
 
@@ -414,6 +469,7 @@ def eq_mle(w: list[Scalar]):
     
     mono = monomial(Scalar.one(), prod)
     return mono
+
 
 def eq_mle_poly(w: list[Scalar]):
     return polynomial([eq_mle(w)])
@@ -512,7 +568,27 @@ def get_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> polynomial:
     return polynomial(ext_f)
 
 def get_ext_from_k(f: Callable[[list[Scalar]], Scalar], v: int, k: int) -> polynomial:
+    """  
+    Return expansion of multivariate polynomial
+
+    params:
+    f: function to evaluate  
+    v: numbers of bit in w
+    k: index of x_i, k = 1 means x_1
+
+    example:
+    f()=5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
+    you can also pass in a function that takes in a list of scalars and returns a scalar without explicit definition based on the terms
+    this input expands to 30 x1 * x2 + 40 x1 + 15 x2 + 26
+    """ 
     w_set = generate_binary(v)
+    try:
+        f(w_set[0])
+    except ValueError as e:
+        raise ValueError("Invalid input or function") from e
+    if k < 1:
+        raise ValueError("Invalid index")
+
     ext_f = []
     for w in w_set:
         res = chi_w_from_k(w, k)
@@ -547,3 +623,18 @@ def const2mexp(value: Scalar, v: int) -> MultivariateExpansion:
     term = [Scalar(0) for _ in range(v+1)]
     term[0] = value
     return MultivariateExpansion([term], v)
+one = Scalar(1)
+neg_one = Scalar(-1)
+
+def generate_combinations(length):
+    """  
+    TODO: Add description
+    """
+    if length == 0:
+        return [[]]
+    else:
+        result = []
+        for combination in generate_combinations(length - 1):
+            result.append(combination + [neg_one])
+            result.append(combination + [one])
+        return result

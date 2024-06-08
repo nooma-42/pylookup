@@ -1,6 +1,6 @@
 import unittest
 from src.common_util.mle_poly import (
-    generate_binary, eval_ext, eval_expansion, get_multi_ext,
+    generate_binary, eval_ext, eval_expansion, get_multi_ext, chi_w_from_k, get_ext_from_k,
     term, monomial, polynomial
 )
 from src.common_util.curve import Scalar
@@ -54,6 +54,21 @@ def test_polynomial_function(values):
     # 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
     x_1, x_2 = values
     return 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
+
+zero = Scalar.zero()
+one = Scalar.one()
+
+def W1Func(bitstring: list[Scalar]) -> Scalar:
+  if bitstring == [zero, zero]:
+    return Scalar(9)
+  elif bitstring == [zero, one]:
+    return Scalar(4)
+  elif bitstring == [one, zero]:
+    return Scalar(6)
+  elif bitstring == [one, one]:
+    return Scalar(1)
+  else: 
+    raise ValueError("Invalid input")
 
 class TestMlePoly(unittest.TestCase):
     def test_generate_binary(self):
@@ -128,3 +143,47 @@ class TestMlePoly(unittest.TestCase):
         # Evaluate the polynomial using eval_ext
         eval_ext(f, r)
 
+    def test_chi_w_from_k(self):
+        poly = [Scalar(1), Scalar(0), Scalar(1)]
+        result: monomial = chi_w_from_k(poly, 2)
+        monomial1 = monomial(coeff=Scalar(1), 
+                             terms=[
+                                 term(coeff=Scalar(1), i=2, const=Scalar(0)), 
+                                 term(coeff=Scalar(-1), i=3, const=Scalar(1)), 
+                                 term(coeff=Scalar(1), i=4, const=Scalar(0)), 
+                                                     ])
+        self.assertEqual(result, monomial1)
+
+    def test_get_ext_from_k(self):
+        poly = get_ext_from_k(W1Func, 2, 2)
+        """
+        9 * ((21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_2 + 1) * (21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_3 + 1)) 
+        + 4 * ((21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_2 + 1) * (1 * x_3 + 0)) 
+        + 6 * ((1 * x_2 + 0) * (21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_3 + 1)) 
+        + 1 * ((1 * x_2 + 0) * (1 * x_3 + 0)) 
+        + 0 
+        """
+        expected = polynomial(
+            [
+                monomial(
+                    Scalar(9), [
+                    term(Scalar(21888242871839275222246405745257275088548364400416034343698204186575808495616), 2, Scalar(1)),
+                    term(Scalar(21888242871839275222246405745257275088548364400416034343698204186575808495616), 3, Scalar(1))
+                ]), 
+                monomial(
+                    Scalar(4), [
+                    term(Scalar(21888242871839275222246405745257275088548364400416034343698204186575808495616), 2, Scalar(1)), 
+                    term(Scalar(1), 3, Scalar(0))
+                ]), 
+                monomial(
+                    Scalar(6), [
+                    term(Scalar(1), 2, Scalar(0)), 
+                    term(Scalar(21888242871839275222246405745257275088548364400416034343698204186575808495616), 3, Scalar(1))
+                ]), 
+                monomial(
+                    Scalar(1), [
+                    term(Scalar(1), 2, Scalar(0)),
+                    term(Scalar(1), 3, Scalar(0))
+                ])
+            ])
+        self.assertEqual(poly, expected)

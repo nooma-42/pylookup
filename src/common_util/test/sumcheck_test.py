@@ -44,6 +44,38 @@ def test_polynomial_function2(values):
     x_1, x_2  = values
     return 5 * (2 * x_1 + 1) * (3 * x_2 + 4)
 
+zero = Scalar.zero()
+one = Scalar.one()
+
+def mult_layer_zero(arr: list[Scalar]) -> Scalar:
+    if len(arr) == 3:
+        if arr == [zero, zero, one]:
+            return one
+        elif arr == [one, one, zero]:
+            return one
+        elif arr == [zero, one, zero]: # [0, 1, 0]
+            return one
+        else:
+            return zero
+    else:
+        raise ValueError("Invalid input length")
+
+def W0Func(bitstring):
+  if bitstring == [zero]:
+    return Scalar(36)
+  elif bitstring == [one]:
+    return Scalar(6)
+
+def W1Func(bitstring):
+  if bitstring == [zero, zero]:
+    return Scalar(9)
+  elif bitstring == [zero, one]:
+    return Scalar(4)
+  elif bitstring == [one, zero]:
+    return Scalar(6)
+  elif bitstring == [one, one]:
+    return Scalar(1)
+
 class TestSumcheck(unittest.TestCase):
     def test_prove_sumcheck(self):
         try:
@@ -76,9 +108,13 @@ class TestSumcheck(unittest.TestCase):
                 multi_expansion = get_multi_ext(test_polynomial_function2, v) 
                 claim += eval_expansion(multi_expansion, assignment)
             
-            proof, r = prove_sumcheck(f, v, 1)
+            proof, r = prove_sumcheck(f, v, 0)
             self.assertTrue(verify_sumcheck(claim, proof, r, v), "Verification failed")
         except Exception as e:
             self.fail(e)
-    
 
+    def test_prove_sumcheck_start_idx(self):
+        v = 2
+        f = test_polynomial2()
+        # start from x_3
+        prove_sumcheck(f, v, 1)

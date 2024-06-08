@@ -2,13 +2,16 @@
 #mle sumcheck instead of binary
 from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate
 from src.common_util.curve import Scalar
-from src.common_util.transcript import CommonTranscript
 from src.common_util.util import *
 
-def prove_sumcheck(g: polynomial, v: int, start: int):
+def prove_sumcheck(g: polynomial, v: int, offset: int):
     """
+    g: the polynomial to prove
     v: number of variables
-    start: index to start from e.g. x_5: evaluate g at x_5, x_6, ... x_v
+    offset: index to start from e.g. x_5: evaluate g at x_5, x_6, ... x_v
+    NOTE: 
+    1. the offset begins from 0, meaning index begins from x_2, because i + 2 + start, because we make x_1 a variable in the first round
+    2. this notation follows Proof Argument and Zero Knowledge by Justin Thaler
     """
     proof = []
     r = []
@@ -16,15 +19,18 @@ def prove_sumcheck(g: polynomial, v: int, start: int):
     # g1(X1)=∑(x2,⋯,xv)∈{0,1}^v g(X_1,x_2,⋯,x_v)    
     g_1 = polynomial([])
     assignments = generate_binary(v - 1)
+
     for assignment in assignments:
         g_1_sub = polynomial(g.terms[:], g.constant)
+        
+        # Loop through every bit of the assignment
         for i, x_i in enumerate(assignment):
-            idx = i + 1 + start
+            idx = i + 2 + offset # the offset begins from 0, meaning index begins from x_2, because i + 2 + start
             g_1_sub = g_1_sub.eval_i(x_i, idx)
         g_1 += g_1_sub
     proof.append(g_1.get_all_coefficients())
 
-    r_1 = Scalar(sum(list(map(lambda x : int(x), g_1.get_all_coefficients())))) # FIX: sum in this line should be hash
+    r_1 = Scalar(sum(list(map(lambda x : int(x), g_1.get_all_coefficients())))) # FIXME: sum in this line should be hash
     r.append(r_1)
 
     # 1 < j < v round
@@ -32,14 +38,14 @@ def prove_sumcheck(g: polynomial, v: int, start: int):
         g_j = polynomial(g.terms[:], g.constant)
         assignments = generate_binary(v - j - 1)
         for i, r_i in enumerate(r):
-            idx = i + start
+            idx = i + 1 + offset
             g_j = g_j.eval_i(r_i, idx)
         
         res_g_j = polynomial([])
         for assignment in assignments:
             g_j_sub = polynomial(g_j.terms[:], g_j.constant)
             for k, x_i in enumerate(assignment):
-                idx = j + k + start + 1
+                idx = j + k + offset + 1
                 g_j_sub = g_j_sub.eval_i(x_i, idx)
             res_g_j += g_j_sub
         proof.append(res_g_j.get_all_coefficients())
@@ -47,9 +53,10 @@ def prove_sumcheck(g: polynomial, v: int, start: int):
         r_n = Scalar(sum(list(map(lambda x : int(x), proof[len(proof) - 1]))))
         r.append(r_n)
 
+    # last round
     g_v = polynomial(g.terms[:], g.constant)
     for i, r_i in enumerate(r):
-        idx = i + start
+        idx = i + 1 + offset
         g_v = g_v.eval_i(r_i, idx)
     proof.append(g_v.get_all_coefficients())
 

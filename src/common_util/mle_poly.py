@@ -486,6 +486,8 @@ def eval_expansion(f: list[list[Scalar]], r: list[Scalar]) -> Scalar:
     Evaluate multivariate polynomial expansion at point r 
     input:  [30, 1, 1], [40, 1, 0], [15, 0, 1], [26, 0, 0]
         representing 30 x1 * x2 + 40 x1 + 15 x2 + 26
+    
+    TODO add input output example
     """
     assert (len(r) + 1 == len(f[0]))
     res = Scalar.zero()
@@ -558,6 +560,10 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
 # r : {0, 1}^v
 def get_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> polynomial:
     w_set = generate_binary(v)
+    try:
+        f(w_set[0])
+    except ValueError as e:
+        raise ValueError("Invalid input or function") from e
     ext_f = []
     for w in w_set:
         res = chi_w(w)
@@ -626,7 +632,7 @@ def const2mexp(value: Scalar, v: int) -> MultivariateExpansion:
 one = Scalar(1)
 neg_one = Scalar(-1)
 
-def generate_combinations(length):
+def generate_combinations(length) -> list[list[Scalar]]:
     """  
     TODO: Add description
     """
@@ -638,3 +644,71 @@ def generate_combinations(length):
             result.append(combination + [neg_one])
             result.append(combination + [one])
         return result
+    
+def reduce_multiple_polynomial(b: list[Scalar], c: list[Scalar], w: polynomial) -> list[Scalar]:
+    """  
+    Reduce multiple polynomial evaluation to one
+
+    params:
+    b, c: two points on hypercube
+    w: multilinear evaluation polynomial
+
+    Return:
+    w(l()): the restriction of W to l
+
+    Example:
+    b = (2, 4) c=(3, 2)
+    w = 3x1x2 + 2x2
+    l(0) = b, l(1) = c, t -> (t + 2, 4 - 2t)
+    the restriction of W to l is 3(t + 2)(4 - 2t) + 2(4 - 2t) = -6t^2 - 4t + 32
+    
+    Note: 
+    1. 4.5.2 in Proof Argument and Zero Knowledge by Justin Thaler
+    2. This implementation only consider 2 evaluations
+    """
+    assert(len(b) == len(c))
+    t = []
+    new_poly_terms = []
+    for b_i, c_i in zip(b, c):
+        new_const = b_i
+        gradient = c_i - b_i
+        t.append(term(gradient, 1, new_const))
+    
+    for mono in w.terms:
+        new_terms = []
+        for each in mono.terms:
+            new_term = t[each.x_i - 1] * each.coeff
+            new_term.const += each.const
+            new_terms.append(new_term)
+        new_poly_terms.append(monomial(mono.coeff, new_terms))
+
+    poly = polynomial(new_poly_terms, w.constant)
+    return poly.get_all_coefficients()
+
+def ell(p1: list[Scalar], p2: list[Scalar], t: Scalar) -> list[Scalar]:
+    """  
+    reduce verification at two points into verification at a single point
+
+    Params:
+    p1, p2: two points on hypercube
+    t: random input chosen by the verifier, this input to l and get next layer randomness. r_i+1 = l(r*)
+    
+    Returns:
+    r_i+1: randomness for next layer
+
+    Example:
+    p1 = b*, p2 = c*, t = r*
+    l(r*) = b* + (r*) * (c* - b*)
+
+    Note:
+    ell(p1, p2, t) = p1 + t * (p2 - p1), which represents the evaluation of a polynomial at the point ell(p1, p2, t) \
+        using the linear function l(x) = p1 + x * (p2 - p1), i.e. l(0) = p1 and l(1) = p2
+    """
+    consts = p1
+    output = [Scalar.zero()]*len(p2)
+    other_term = [Scalar.zero()]*len(p2)
+    for i in range(len(p2)):
+        other_term[i] = p2[i] - consts[i]
+    for i in range(len(p2)):
+        output[i] = consts[i] + t*other_term[i]
+    return output

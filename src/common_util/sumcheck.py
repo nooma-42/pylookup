@@ -4,7 +4,7 @@ from src.common_util.mle_poly import polynomial, generate_binary, eval_univariat
 from src.common_util.curve import Scalar
 from src.common_util.util import *
 
-def prove_sumcheck(g: polynomial, v: int, offset: int):
+def prove_sumcheck(g: polynomial, v: int, offset: int) -> tuple[list[Scalar], list[Scalar]]:
     """
     g: the polynomial to prove
     v: number of variables

@@ -1,11 +1,17 @@
+# Code modified from https://github.com/jeong0982/gkr
 import math
 import time
-from mle_poly import *
-from sumcheck import *
+from typing import Callable
+from src.common_util.curve import Scalar
+from src.common_util.mle_poly import (
+    get_multi_ext, eval_expansion, eval_univariate, get_ext,
+    monomial, term, polynomial
+)
+from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
 
 class Node:
   def __init__(self, binary_index: list[int], value, left=None, right=None):
-    self.binary_index = binary_index
+    self.binary_index: list[int] = binary_index
     self.value = value
     self.left = left
     self.right = right
@@ -13,12 +19,8 @@ class Node:
 class Layer:
     def __init__(self) -> None:
         self.nodes = []
-
-    def def_mult(self, mult):
-        self.mult = mult
-
-    def def_add(self, add):
-        self.add = add
+        self.nominator = None
+        self.denominator = None
 
     def get_node(self, index) -> Node:
         return self.nodes[index]
@@ -26,8 +28,11 @@ class Layer:
     def add_node(self, index, node) -> None:
         self.nodes.insert(index, node)
 
-    def add_func(self, func):
-        self.func = func
+    def add_nominator(self, nominator: Callable[[list[Scalar]], Scalar]) -> None:
+        self.nominator = nominator
+    
+    def add_denominator(self, denominator: Callable[[list[Scalar]], Scalar]) -> None:
+        self.denominator = denominator
 
     def len(self):
         return len(self.nodes)
@@ -37,7 +42,7 @@ class Circuit:
         layers = []
         for _ in range(depth):
             layers.append(Layer())
-        self.layers : list[Layer] = layers # type: ignore
+        self.layers : list[Layer] = layers
     
     def get_node(self, layer, index):
         return self.layers[layer].get_node(index)
@@ -53,64 +58,28 @@ class Circuit:
     
     def k_i(self, layer):
         return int(math.log2(self.layer_length(layer)))
-
-    def add_i(self, i):
-        return self.layers[i].add
     
-    def mult_i(self, i):
-        return self.layers[i].mult
+    def p_i(self, i) -> Callable[[list[Scalar]], Scalar]:
+        return self.layers[i].nominator
     
-    def w_i(self, i):
-        return self.layers[i].func
-
-
-def reduce_multiple_polynomial(b: list[field.FQ], c: list[field.FQ], w: polynomial) -> list[field.FQ]:
-    assert(len(b) == len(c))
-    t = []
-    new_poly_terms = []
-    for b_i, c_i in zip(b, c):
-        new_const = b_i
-        gradient = c_i - b_i
-        t.append(term(gradient, 1, new_const))
-    
-    for mono in w.terms:
-        new_terms = []
-        for each in mono.terms:
-            new_term = t[each.x_i - 1] * each.coeff
-            new_term.const += each.const
-            new_terms.append(new_term)
-        new_poly_terms.append(monomial(mono.coeff, new_terms))
-
-    poly = polynomial(new_poly_terms, w.constant)
-    return poly.get_all_coefficients()
-
-# reduce verification at two points into verification at a single point
-def ell(p1: list[field.FQ], p2: list[field.FQ], t: field.FQ):
-    consts = p1
-    output = [field.FQ.zero()]*len(p2)
-    other_term = [field.FQ.zero()]*len(p2)
-    for i in range(len(p2)):
-        other_term[i] = p2[i] - consts[i]
-    for i in range(len(p2)):
-        output[i] = consts[i] + t*other_term[i]
-    return output
-
+    def q_i(self, i) -> Callable[[list[Scalar]], Scalar]:
+        return self.layers[i].denominator
 
 class Proof:
     def __init__(self, proofs, r, f, D, q, z, r_stars, d, w, adds, mults, k) -> None:
-      self.sumcheck_proofs : list[list[list[field.FQ]]] = proofs
-      self.sumcheck_r : list[list[field.FQ]] = r
-      self.f : list[field.FQ] = f
-      self.D : list[list[field.FQ]] = D
-      self.q : list[list[field.FQ]] = q
-      self.z : list[list[field.FQ]] = z
-      self.r : list[field.FQ] = r_stars
+      self.sumcheck_proofs : list[list[list[Scalar]]] = proofs
+      self.sumcheck_r : list[list[Scalar]] = r
+      self.f : list[Scalar] = f
+      self.D : list[list[Scalar]] = D
+      self.q : list[list[Scalar]] = q
+      self.z : list[list[Scalar]] = z
+      self.r : list[Scalar] = r_stars
 
       # circuit info
       self.d : int = d
-      self.input_func : list[list[field.FQ]] = w
-      self.add : list[list[list[field.FQ]]] = adds
-      self.mult : list[list[list[field.FQ]]] = mults
+      self.input_func : list[list[Scalar]] = w
+      self.add : list[list[list[Scalar]]] = adds
+      self.mult : list[list[list[Scalar]]] = mults
       self.k : list[int] = k
 
     def to_dict(self):
@@ -127,12 +96,47 @@ class Proof:
         to_serialize['mult'] = list(map(lambda x: list(map(lambda y: list(map(lambda z: repr(z), y)), x)), self.mult))
         return to_serialize
 
+def prove_layer(circuit: Circuit, layer: int, r_k: list[Scalar]):
+    """ 
+    Prove each layer with sumcheck protocol
+
+    params:
+    circuit: Circuit
+    layer: int
+    r_k: a random scalar vector. This will be used in sumcheck
+
+    """
+    # Calculate the polynomial p_k q_k. They are the fraction nominator and denominator, p_k+1(, +1), # p_k+1(, -1)
+    """  
+    TODO
+    shd index change
+    p k1 input
+    """
+    next_layer = layer + 1
+    p_k_plus_one = get_ext(f=circuit.p_i(next_layer), v=circuit.k_i(next_layer))
+    p_k_minus_one = get_ext(f=circuit.p_i(next_layer), v=circuit.k_i(next_layer))  
+    q_k_plus_one = get_ext(f=circuit.q_i(next_layer), v=circuit.k_i(next_layer))
+    q_k_minus_one = get_ext(f=circuit.q_i(next_layer), v=circuit.k_i(next_layer))
+    p_k: polynomial = p_k_plus_one * q_k_plus_one + p_k_minus_one * q_k_minus_one
+    q_k: polynomial = q_k_plus_one * q_k_minus_one
+    # TODO: make this random linear combination
+    f = p_k + q_k
+    
+    start_idx = circuit.k_i(layer) + 1
+    # FIXME: how does it prove sumcheck without knowing r? thinking about add r, # FIXME v
+    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(layer + 1), offset=start_idx) 
+    # TODO replace this with merlin transcript
+    r_k_plus_one: Scalar = Scalar(sum(list(map(lambda x : int(x), sumcheck_proof)))) # FIXME: sum in this line should be hash
+    
+    return sumcheck_proof, sumcheck_r, r_k_plus_one
+
+""" 
 def prove(circuit: Circuit, D):
     start_time = time.time()
 
     D_poly = get_multi_ext(D, circuit.k_i(0))
     z = [[]] * circuit.depth()
-    z[0] = [field.FQ.zero()] * circuit.k_i(0)
+    z[0] = [Scalar.zero()] * circuit.k_i(0)
     sumcheck_proofs = []
     q = []
     f_res = []
@@ -140,51 +144,16 @@ def prove(circuit: Circuit, D):
     r_stars = []
 
     for i in range(len(z[0])):
-        z[0][i] = field.FQ.random() # This initial value is unsafe
+        z[0][i] = Scalar(1) # random scalar given by the verifier
 
     for i in range(circuit.depth() - 1):
-        add_i_ext = get_ext(circuit.add_i(i), circuit.k_i(i) + 2 * circuit.k_i(i + 1))
-        for j, r in enumerate(z[i]):
-            add_i_ext = add_i_ext.eval_i(r, j + 1)
-
-        mult_i_ext = get_ext(circuit.mult_i(i), circuit.k_i(i) + 2 * circuit.k_i(i + 1))
-        for j, r in enumerate(z[i]):
-            mult_i_ext = mult_i_ext.eval_i(r, j + 1)
-
-        w_i_ext_b = get_ext_from_k(circuit.w_i(i + 1), circuit.k_i(i + 1), circuit.k_i(i) + 1)
-        w_i_ext_c = get_ext_from_k(circuit.w_i(i + 1), circuit.k_i(i + 1), circuit.k_i(i) + circuit.k_i(i + 1) + 1)
-
-        first = add_i_ext * (w_i_ext_b + w_i_ext_c)
-        second = mult_i_ext * w_i_ext_b * w_i_ext_c
-        f = first + second
-
-        start_idx = circuit.k_i(i) + 1
-
-        sumcheck_proof, r = prove_sumcheck(f, 2 * circuit.k_i(i + 1), start_idx)
+        sumcheck_proof, r, r_star, f_result_value, q_i, next_r = prove_layer(circuit, sumcheck_proofs, sumcheck_r, i) # FIXME check order
         sumcheck_proofs.append(sumcheck_proof)
         sumcheck_r.append(r)
-
-        b_star = r[0: circuit.k_i(i + 1)]
-        c_star = r[circuit.k_i(i + 1):(2 * circuit.k_i(i + 1))]
-
-        next_w = get_ext(circuit.w_i(i + 1), circuit.k_i(i + 1))
-        q_i = reduce_multiple_polynomial(b_star, c_star, next_w)
-
-        q.append(q_i)
-
-        f_result = polynomial(f.terms, f.constant)
-        f_result_value = field.FQ.zero()
-        for j, x in enumerate(r):
-            if j == len(r) - 1:
-                f_result_value = f_result.eval_univariate(x)
-            f_result = f_result.eval_i(x, j + start_idx)
-        
-        f_res.append(f_result_value)
-
-        r_star = field.FQ(mimc.mimc_hash(list(map(lambda x : int(x), sumcheck_proof[len(sumcheck_proof) - 1]))))
-        next_r = ell(b_star, c_star, r_star)
-        z[i + 1] = next_r # r_(i + 1)
         r_stars.append(r_star)
+        f_res.append(f_result_value)
+        q.append(q_i)
+        z[i + 1] = next_r
 
     w_input = get_multi_ext(circuit.w_i(circuit.depth() - 1), circuit.k_i(circuit.depth() - 1))
     adds = []
@@ -201,23 +170,25 @@ def prove(circuit: Circuit, D):
 
 def verify(proof: Proof):
     start = time.time()
-    m = [field.FQ.zero()]*proof.d
+    m = [Scalar.zero()]*proof.d
     m[0] = eval_expansion(proof.D, proof.z[0])
 
     for i in range(proof.d - 1):
+        # verify_layer()
         valid = verify_sumcheck(m[i], proof.sumcheck_proofs[i], proof.sumcheck_r[i], 2 * proof.k[i + 1])
         if not valid:
             return False
         else:
+            # wi+1 but univariated
             q_i = proof.q[i]
-            q_zero = eval_univariate(q_i, field.FQ.zero())
-            q_one = eval_univariate(q_i, field.FQ.one())
+            q_zero = eval_univariate(q_i, Scalar.zero())
+            q_one = eval_univariate(q_i, Scalar.one())
 
             modified_f = eval_expansion(proof.add[i], proof.z[i] + proof.sumcheck_r[i]) * (q_zero + q_one) \
                         + eval_expansion(proof.mult[i], proof.z[i] + proof.sumcheck_r[i]) * (q_zero * q_one)
 
             sumcheck_p = proof.sumcheck_proofs[i]
-            sumcheck_p_hash = field.FQ(mimc.mimc_hash(list(map(lambda x : int(x), sumcheck_p[len(sumcheck_p) - 1]))))
+            sumcheck_p_hash = Scalar(sum(list(map(lambda x : int(x), sumcheck_p[len(sumcheck_p) - 1])))) # FIXME: sum in this line should be hash
 
             if (proof.f[i] != modified_f) or (sumcheck_p_hash != proof.r[i]):
                 print("verifying time :", time.time() - start)
@@ -229,3 +200,4 @@ def verify(proof: Proof):
         return False
     print("verifying time :", time.time() - start)
     return True
+ """

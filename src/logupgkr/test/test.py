@@ -1,5 +1,5 @@
 import unittest
-from src.logupgkr.gkr import *
+from src.logupgkr.fractional_gkr import *
 from genjson import *
 
 def test_table():

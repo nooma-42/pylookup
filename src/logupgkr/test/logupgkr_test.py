@@ -163,17 +163,7 @@ def generate_test_circuit() -> list[tuple[list[Scalar], Scalar, Scalar]]:
 
 from collections import defaultdict
 
-def test_round():
-    def group_and_add(tuples):
-        groups = defaultdict(list)
-        length = max(len(t[0]) for t in tuples)
-
-        for binary, value in tuples:
-            prefix = binary[:length-1]
-            groups[tuple(prefix)].append(value)
-
-        return [(k, sum(v)) for k, v in groups.items()]
-    
+def test_layers():
     def q_one_layer_up(qs):
         groups = defaultdict(list)
         length = max(len(t[0]) for t in qs)
@@ -189,63 +179,79 @@ def test_round():
             return qs[0] * qs[1]
         return [(k, denominator(v)) for k, v in groups.items()]
     
-    def p_one_layer_up(ps, qs):
-        p_groups = defaultdict(list)
-        q_groups = defaultdict(list)
-        length = max(len(t[0]) for t in qs)
+    def p_one_layer_up(index_and_p: list[tuple[tuple[Scalar,...], Scalar]], index_and_q: list[tuple[tuple[Scalar,...], Scalar]]):
+        """  
+        params:
+        index_and_p: [([x1, x2, x3], p), (...)...]
+        index_and_q: [([x1, x2, x3], p), (...)...]
 
-        for binary, value in qs:
-            prefix = binary[:length-1]
-            post_fix = binary[length-1:]
-            p_groups[tuple(prefix)].append((post_fix, value))
-            q_groups[tuple(prefix)].append((post_fix, value))
-            
-        def nominator(ps, qs):
-            return p_k_plus_one_pos * q_k_plus_one_neg + p_k_plus_one_neg * q_k_plus_one_pos
-        return [(k, nominator(v)) for k, v in groups.items()]
+        examples:
+        [([1, -1, 1], 10)]
+        """
+        p_groups = defaultdict(defaultdict) # prefix -> postfix -> value
+        q_groups = defaultdict(defaultdict) # prefix -> postfix -> value
+        prefix_list: set[tuple[Scalar,...]] = set() # set[tuple[index in hypercube]], list is unhashable, turn it into tuple
 
-    def perform_rounds(tuples, config=None):
+        index_and_p_length = max(len(t[0]) for t in index_and_p)
+        index_and_q_length = max(len(t[0]) for t in index_and_q)
+        if index_and_p_length != index_and_q_length:
+            raise ValueError("p and q length mismatch")
+        length = index_and_p_length
+        for binary, value in index_and_p:
+            prefix: tuple[Scalar,...] = binary[:length-1]
+            post_fix: Scalar = binary[length-1]
+            p_groups[tuple(prefix)][post_fix] = value
+        for binary, value in index_and_q:
+            prefix: tuple[Scalar,...] = binary[:length-1]
+            post_fix: Scalar = binary[length-1]
+            tuple_prefix: tuple[Scalar,...] = tuple(prefix)
+            q_groups[tuple_prefix][post_fix] = value
+            prefix_list.add(tuple_prefix)
+
+        nominators: list[tuple[tuple[Scalar,...], Scalar]] = [] # [(prefix: tuple, value: Scalar)]
+        for pre in prefix_list:
+            postfix_ps = p_groups[tuple(pre)]
+            postfix_qs = q_groups[tuple(pre)]
+            p_k_plus_one_neg, p_k_plus_one_pos, q_k_plus_one_neg, q_k_plus_one_pos = None, None, None, None
+            if len(postfix_ps) != 2 or len(postfix_qs) != 2:
+                raise ValueError("Invalid input")
+            p_k_plus_one_pos = postfix_ps.get(one)
+            p_k_plus_one_neg = postfix_ps.get(neg_one)
+            q_k_plus_one_pos = postfix_qs.get(one)
+            q_k_plus_one_neg = postfix_qs.get(neg_one)
+            if p_k_plus_one_neg is None or p_k_plus_one_pos is None or q_k_plus_one_neg is None or q_k_plus_one_pos is None:
+                raise ValueError("Invalid input")
+            nominators.append((pre, p_k_plus_one_pos * q_k_plus_one_neg + p_k_plus_one_neg * q_k_plus_one_pos))
+        return nominators
+
+    def perform_layers(index_and_p: list[tuple[tuple[Scalar,...], Scalar]]|None, index_and_q: list[tuple[tuple[Scalar,...], Scalar]], config=None):
         rounds = []
-        current = tuples
-        func = None
         while True:
-            if config == "p":
-                next_round = p_one_layer_up(current, func)
+            if config == "p" and index_and_p is not None:
+                next_round = p_one_layer_up(index_and_p, index_and_q)
+                index_and_p = next_round
+                index_and_q = q_one_layer_up(index_and_q)
             elif config == "q":
-                next_round = q_one_layer_up(current)
+                next_round = q_one_layer_up(index_and_q)
+                index_and_q = next_round
             else:
-                next_round = group_and_add(current)
+                raise ValueError("Invalid config")
             rounds.append(next_round)
 
+            if next_round is None:
+                raise ValueError("Invalid next round")
             if len(next_round) == 1:
                 break
-
-            current = next_round
-
         return rounds
 
     index_and_p = []
     index_and_q = []
     for X in generate_combinations(test2_n):
             for Y in generate_combinations(test2_k):
-                index_and_p.append((X+Y, p(X, Y, test2_m)))
-                index_and_q.append((X+Y, q(X, Y, test2_t, test2_w, test_a)))
-    """ tuples = [
-        ([-1, 1, 1, -1], 1),
-        ([-1, 1, 1, 1], 2),
-        ([1, 1, 1, -1], 3),
-        ([1, 1, 1, 1], 4),
-    ]
-    rounds = perform_rounds(tuples)
+                index_and_p.append((tuple(X+Y), p(X, Y, test2_m)))
+                index_and_q.append((tuple(X+Y), q(X, Y, test2_t, test2_w, test_a)))
 
-    for i, round_result in enumerate(rounds):
-        print(f"Round {i+1}:")
-        for prefix, value in round_result:
-            print(f"({prefix}, {value})")
-        print() """
-
-    rounds = perform_rounds(index_and_q, config="q")
-
+    rounds = perform_layers(None, index_and_q, config="q")
     print("Round 0:")
     for i in range(len(index_and_q)):
         print(index_and_q[i])
@@ -256,13 +262,25 @@ def test_round():
             print(f"({prefix}, {value})")
         print()
 
+    rounds = perform_layers(index_and_p, index_and_q, config="p")
+    print("Round 0:")
+    for i in range(len(index_and_p)):
+        print(index_and_p[i])
+    print()
+    for i, round_result in enumerate(rounds):
+        print(f"Round {i+1}:")
+        for prefix, value in round_result:
+            print(f"({prefix}, {value})")
+        print()
+
+
 def init_test_circuit():
     index_and_p_and_q = generate_test_circuit()
     c = Circuit(4)
     #p_0 = Node([0], Scalar(0))
     #q_0 = Node([1], Scalar(2430480)) # 38, 39, 40, 41
     
-    test_round()
+    test_layers()
 
     def W0func(arr):
         if(arr == [Scalar(0)]):
@@ -294,5 +312,5 @@ class TestLogUPGKR(unittest.TestCase):
         assert fraction_sum == Scalar(0)
     def test_prove_layer(self):
         generate_test_circuit()
-        test_round()
+        test_layers()
         pass

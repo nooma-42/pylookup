@@ -2,6 +2,7 @@
 import math
 import time
 from typing import Callable
+from dataclasses import dataclass
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import (
     get_multi_ext, eval_expansion, eval_univariate, get_ext,
@@ -9,61 +10,63 @@ from src.common_util.mle_poly import (
 )
 from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
 
+
+@dataclass
 class Node:
-  def __init__(self, binary_index: list[int], value, left=None, right=None):
+  """  
+  p represents nominator
+  q represents denominator
+  """
+  def __init__(self, binary_index: list[int], p: Scalar, q: Scalar):
     self.binary_index: list[int] = binary_index
-    self.value = value
-    self.left = left
-    self.right = right
+    self.p = p 
+    self.q = q
 
 class Layer:
-    def __init__(self) -> None:
-        self.nodes = []
-        self.nominator = None
-        self.denominator = None
+    def __init__(self, index_and_nodes: dict[int, Node]) -> None:
+        index_and_nodes = dict(sorted(index_and_nodes.items()))
+        self.nodes = [index_and_nodes[i] for i in range(len(index_and_nodes))]
 
     def get_node(self, index) -> Node:
         return self.nodes[index]
 
-    def add_node(self, index, node) -> None:
-        self.nodes.insert(index, node)
-
-    def add_nominator(self, nominator: Callable[[list[Scalar]], Scalar]) -> None:
-        self.nominator = nominator
-    
-    def add_denominator(self, denominator: Callable[[list[Scalar]], Scalar]) -> None:
-        self.denominator = denominator
-
-    def len(self):
+    def nodes_length(self):
         return len(self.nodes)
 
 class Circuit:
-    def __init__(self, depth):
-        layers = []
-        for _ in range(depth):
-            layers.append(Layer())
-        self.layers : list[Layer] = layers
+    """  
+    params:
+        index_and_layers: [[((x1, x2, x3), p, q), ...], ...]
+                representing [layer1, layer2, ...]
+        p_i represents a dict from layer_number to nominator function
+            for example, the expected form is:
+            p_i[0] = W0func
+            ```
+            def W0func(arr):
+                if(arr == [Scalar(0)]):
+                    return Scalar(36)
+                elif (arr == [Scalar(1)]):
+                    return Scalar(6)
+            ```
+        q_i represents a dict from layer_number to denominator function, similar to p_i
+    """
+    def __init__(self, index_and_layers: dict[int, Layer], p_i: dict[int, Callable[[list[Scalar]], Scalar]], q_i: dict[int, Callable[[list[Scalar]], Scalar]]):
+        index_and_layers = dict(sorted(index_and_layers.items()))
+        self.layers: list[Layer] = [index_and_layers[i] for i in range(len(index_and_layers))]
+        self.p_i: dict[int, Callable[[list[Scalar]], Scalar]] = p_i
+        self.q_i: dict[int, Callable[[list[Scalar]], Scalar]]= q_i
     
     def get_node(self, layer, index):
         return self.layers[layer].get_node(index)
-
-    def add_node(self, layer, index, binary_index, value, left=None, right=None):
-        self.layers[layer].add_node(index, Node(binary_index, value, left, right))
 
     def depth(self):
         return len(self.layers)
 
     def layer_length(self, layer):
-        return self.layers[layer].len()
+        return self.layers[layer].nodes_length()
     
     def k_i(self, layer):
         return int(math.log2(self.layer_length(layer)))
-    
-    def p_i(self, i) -> Callable[[list[Scalar]], Scalar]:
-        return self.layers[i].nominator
-    
-    def q_i(self, i) -> Callable[[list[Scalar]], Scalar]:
-        return self.layers[i].denominator
 
 class Proof:
     def __init__(self, proofs, r, f, D, q, z, r_stars, d, w, adds, mults, k) -> None:
@@ -96,35 +99,29 @@ class Proof:
         to_serialize['mult'] = list(map(lambda x: list(map(lambda y: list(map(lambda z: repr(z), y)), x)), self.mult))
         return to_serialize
 
-def prove_layer(circuit: Circuit, layer: int, r_k: list[Scalar]):
+def prove_layer(circuit: Circuit, current_layer_num: int):
     """ 
     Prove each layer with sumcheck protocol
 
     params:
     circuit: Circuit
-    layer: int
+    current_layer_num: int
     r_k: a random scalar vector. This will be used in sumcheck
-
     """
-    # Calculate the polynomial p_k q_k. They are the fraction nominator and denominator, p_k+1(, +1), # p_k+1(, -1)
-    """  
-    TODO
-    shd index change
-    p k1 input
-    """
-    next_layer = layer + 1
-    p_k_plus_one = get_ext(f=circuit.p_i(next_layer), v=circuit.k_i(next_layer))
-    p_k_minus_one = get_ext(f=circuit.p_i(next_layer), v=circuit.k_i(next_layer))  
-    q_k_plus_one = get_ext(f=circuit.q_i(next_layer), v=circuit.k_i(next_layer))
-    q_k_minus_one = get_ext(f=circuit.q_i(next_layer), v=circuit.k_i(next_layer))
-    p_k: polynomial = p_k_plus_one * q_k_plus_one + p_k_minus_one * q_k_minus_one
-    q_k: polynomial = q_k_plus_one * q_k_minus_one
-    # TODO: make this random linear combination
-    f = p_k + q_k
+    next_layer_num: int = current_layer_num + 1
     
-    start_idx = circuit.k_i(layer) + 1
+    # Calculate the polynomial p_k q_k. They are the fraction nominator and denominator, p_k+1(, +1), # p_k+1(, -1)
+    p_k_plus_one_pos: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
+    q_k_plus_one_pos: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
+    p_k_plus_one_neg: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
+    q_k_plus_one_neg: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
+    p_k: polynomial = p_k_plus_one_pos * q_k_plus_one_neg + p_k_plus_one_neg * q_k_plus_one_pos
+    q_k: polynomial = q_k_plus_one_pos * q_k_plus_one_neg
+    # TODO: make this random linear combination
+    f: polynomial = p_k + q_k
+    
     # FIXME: how does it prove sumcheck without knowing r? thinking about add r, # FIXME v
-    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(layer + 1), offset=start_idx) 
+    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num), offset=0) 
     # TODO replace this with merlin transcript
     r_k_plus_one: Scalar = Scalar(sum(list(map(lambda x : int(x), sumcheck_proof)))) # FIXME: sum in this line should be hash
     

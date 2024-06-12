@@ -1,8 +1,9 @@
 import unittest
 from typing import Callable
+from collections import defaultdict
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import generate_combinations
-from src.logupgkr.fractional_gkr import Circuit, Node
+from src.logupgkr.fractional_gkr import Circuit, Layer, Node
 
 one = Scalar(1)
 neg_one = Scalar(-1)
@@ -143,27 +144,9 @@ def q(X, Y, t: Callable[[list[Scalar]], Scalar], w: list[Callable[[list[Scalar]]
     if all(value == one for value in Y):
         return a - t(X)
     else:
-        return a - w[i_y(Y)](X)    
+        return a - w[i_y(Y)](X)              
 
-def generate_test_circuit() -> list[tuple[list[Scalar], Scalar, Scalar]]:
-    """  
-    returns a tuple: 
-        (
-            index, 
-            p(X, Y, test2_m), 
-            q(X, Y, test2_t, test2_w, test_a)
-        )
-    """
-    index_and_p_and_q = []
-    for X in generate_combinations(test2_n):
-        for Y in generate_combinations(test2_k):
-            index = X + Y
-            index_and_p_and_q.append((index, p(X, Y, test2_m), q(X, Y, test2_t, test2_w, test_a)))
-    return index_and_p_and_q            
-
-from collections import defaultdict
-
-def test_layers():
+def generate_test_fractional_gkr_circuit_value() -> tuple[list[list[tuple[tuple[Scalar, ...], Scalar]]], list[list[tuple[tuple[Scalar, ...], Scalar]]]]:
     def q_one_layer_up(qs):
         groups = defaultdict(list)
         length = max(len(t[0]) for t in qs)
@@ -225,62 +208,76 @@ def test_layers():
         return nominators
 
     def perform_layers(index_and_p: list[tuple[tuple[Scalar,...], Scalar]]|None, index_and_q: list[tuple[tuple[Scalar,...], Scalar]], config=None):
-        rounds = []
+        """
+        params:
+        index_and_p: [((x1, x2, x3), p), (...)...]
+            representing [(index: tuple, p: Scalar), ...]
+            An index_and_p represents a layer of the circuit
+        index_and_q: [((x1, x2, x3), p), (...)...]
+
+        returns:
+        index_and_p_layers: [[((x1, x2, x3), p), ...], ...]
+            representing [layer1, layer2, ...]
+        index_and_q_layers: [[((x1, x2, x3), q), ...], ...]
+
+        Note:
+        You can only calculate q, simply configure the config to "q"
+        """
+        index_and_p_layers = [index_and_p] if index_and_p is not None else []
+        index_and_q_layers = [index_and_q]
         while True:
             if config == "p" and index_and_p is not None:
                 next_round = p_one_layer_up(index_and_p, index_and_q)
                 index_and_p = next_round
                 index_and_q = q_one_layer_up(index_and_q)
+                index_and_p_layers.append(index_and_p)
+                index_and_q_layers.append(index_and_q)
             elif config == "q":
                 next_round = q_one_layer_up(index_and_q)
                 index_and_q = next_round
+                index_and_q_layers.append(index_and_q)
             else:
                 raise ValueError("Invalid config")
-            rounds.append(next_round)
 
             if next_round is None:
                 raise ValueError("Invalid next round")
             if len(next_round) == 1:
                 break
-        return rounds
-
+        return index_and_p_layers, index_and_q_layers
+    # Generate the bottom most layer
     index_and_p = []
     index_and_q = []
     for X in generate_combinations(test2_n):
             for Y in generate_combinations(test2_k):
                 index_and_p.append((tuple(X+Y), p(X, Y, test2_m)))
                 index_and_q.append((tuple(X+Y), q(X, Y, test2_t, test2_w, test_a)))
-
-    rounds = perform_layers(None, index_and_q, config="q")
-    print("Round 0:")
-    for i in range(len(index_and_q)):
-        print(index_and_q[i])
-    print()
-    for i, round_result in enumerate(rounds):
-        print(f"Round {i+1}:")
-        for prefix, value in round_result:
-            print(f"({prefix}, {value})")
-        print()
-
-    rounds = perform_layers(index_and_p, index_and_q, config="p")
-    print("Round 0:")
-    for i in range(len(index_and_p)):
-        print(index_and_p[i])
-    print()
-    for i, round_result in enumerate(rounds):
-        print(f"Round {i+1}:")
-        for prefix, value in round_result:
-            print(f"({prefix}, {value})")
-        print()
+    # Generate the layers above till the top
+    index_and_p_layers, index_and_q_layers  = perform_layers(index_and_p, index_and_q, config="p")
+    def print_layers(layers):
+        print("Printing layers:")
+        for i, round_result in enumerate(layers):
+            print(f"Round {i}:")
+            for prefix, value in round_result:
+                print(f"({prefix}, {value})")
+            print()
+    # print_layers(index_and_p_layers)
+    # print_layers(index_and_q_layers)
+    return index_and_p_layers, index_and_q_layers
 
 
 def init_test_circuit():
-    index_and_p_and_q = generate_test_circuit()
-    c = Circuit(4)
+    # index_and_p_layers represents [(index: tuple, p: Scalar), ...]
+    index_and_p_layers, index_and_q_layers = generate_test_fractional_gkr_circuit_value()
+    circuit = Circuit(5)
+    
+    layer = Layer(
+        {
+            0: Node(),
+            1: Node(),
+        }
+    )
     #p_0 = Node([0], Scalar(0))
     #q_0 = Node([1], Scalar(2430480)) # 38, 39, 40, 41
-    
-    test_layers()
 
     def W0func(arr):
         if(arr == [Scalar(0)]):
@@ -311,6 +308,5 @@ class TestLogUPGKR(unittest.TestCase):
                 print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test_a)}")
         assert fraction_sum == Scalar(0)
     def test_prove_layer(self):
-        generate_test_circuit()
-        test_layers()
+        generate_test_fractional_gkr_circuit_value()
         pass

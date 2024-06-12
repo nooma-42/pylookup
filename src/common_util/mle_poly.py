@@ -557,14 +557,27 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
             g_final.append(term)
     return g_final
 
-# r : {0, 1}^v
-def get_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> polynomial:
-    w_set = generate_binary(v)
+def get_ext(f: Callable[[list[Scalar]], Scalar], v: int, last_element=None) -> polynomial:
+    """  
+    y: {0, 1}^v-1
+        with the last element, the input is, for example, (y, +1) 
+    Note: section 3.2
+    """
+    if last_element is None or (last_element is not Scalar(-1) and last_element is not Scalar(1)):
+        raise ValueError("Last element should be either -1 or 1")
+    w_set = generate_binary(v - 1)
+    for w in w_set:
+        w.append(last_element)
+    
     try:
+        if w_set[0] is None:
+            raise ValueError("Invalid input or function")
         f(w_set[0])
     except ValueError as e:
         raise ValueError("Invalid input or function") from e
-    ext_f = []
+    ext_f: list[monomial] = []
+    
+    # construct monomial from the input and accumulate all monomial to single polynomial
     for w in w_set:
         res = chi_w(w)
         if f(w) == Scalar.zero():

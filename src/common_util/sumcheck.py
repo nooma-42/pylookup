@@ -4,17 +4,23 @@ from src.common_util.mle_poly import polynomial, generate_binary, eval_univariat
 from src.common_util.curve import Scalar
 from src.common_util.util import *
 
-def prove_sumcheck(g: polynomial, v: int, offset: int) -> tuple[list[Scalar], list[Scalar]]:
+def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]], list[Scalar]]:
     """
+    params:
     g: the polynomial to prove
     v: number of variables
     offset: index to start from e.g. x_5: evaluate g at x_5, x_6, ... x_v
+    
+    returns:
+    proof: containing all the coefficients of each round
+    r: randomness generated in each round
+    
     NOTE: 
     1. the offset begins from 0, meaning index begins from x_2, because i + 2 + start, because we make x_1 a variable in the first round
     2. this notation follows Proof Argument and Zero Knowledge by Justin Thaler
     """
-    proof = []
-    r = []
+    proof: list[list[Scalar]] = [] # containing all the coefficients of each round
+    r: list[Scalar] = [] # hash of the coefficients of each round as a randomness
     # first round
     # g1(X1)=∑(x2,⋯,xv)∈{0,1}^v g(X_1,x_2,⋯,x_v)    
     g_1 = polynomial([])
@@ -65,7 +71,8 @@ def prove_sumcheck(g: polynomial, v: int, offset: int) -> tuple[list[Scalar], li
 
     return proof, r
 
-def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int):
+# TODO accommodate +1 -1 case 
+def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int) -> bool:
     bn = len(proof)
     if(v == 1 and (eval_univariate(proof[0], Scalar.zero()) + eval_univariate(proof[0], Scalar.one())) == claim):
         return True

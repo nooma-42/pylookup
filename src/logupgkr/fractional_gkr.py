@@ -10,6 +10,8 @@ from src.common_util.mle_poly import (
 )
 from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
 
+one = Scalar(1)
+neg_one = Scalar(-1)
 
 @dataclass
 class Node:
@@ -17,15 +19,15 @@ class Node:
   p represents nominator
   q represents denominator
   """
-  def __init__(self, binary_index: list[int], p: Scalar, q: Scalar):
-    self.binary_index: list[int] = binary_index
+  def __init__(self, binary_index: list[Scalar], p: Scalar, q: Scalar):
+    self.binary_index: list[Scalar] = binary_index
     self.p = p 
     self.q = q
 
 class Layer:
     def __init__(self, index_and_nodes: dict[int, Node]) -> None:
         index_and_nodes = dict(sorted(index_and_nodes.items()))
-        self.nodes = [index_and_nodes[i] for i in range(len(index_and_nodes))]
+        self.nodes: list[Node] = [index_and_nodes[i] for i in range(len(index_and_nodes))]
 
     def get_node(self, index) -> Node:
         return self.nodes[index]
@@ -99,7 +101,7 @@ class Proof:
         to_serialize['mult'] = list(map(lambda x: list(map(lambda y: list(map(lambda z: repr(z), y)), x)), self.mult))
         return to_serialize
 
-def prove_layer(circuit: Circuit, current_layer_num: int):
+def prove_layer(circuit: Circuit, current_layer_num: int) -> tuple[list[list[Scalar]], list[Scalar], Scalar, Scalar]:
     """ 
     Prove each layer with sumcheck protocol
 
@@ -107,25 +109,40 @@ def prove_layer(circuit: Circuit, current_layer_num: int):
     circuit: Circuit
     current_layer_num: int
     r_k: a random scalar vector. This will be used in sumcheck
+
+    returns:
+    sumcheck_proof: list[list[Scalar]], containing all the coefficients of each round
+    sumcheck_r: list[Scalar], hash of the coefficients of each round as a randomness
+    r_k_plus_one: Scalar
+    f_result_value: Scalar
     """
     next_layer_num: int = current_layer_num + 1
     
-    # Calculate the polynomial p_k q_k. They are the fraction nominator and denominator, p_k+1(, +1), # p_k+1(, -1)
-    p_k_plus_one_pos: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
-    q_k_plus_one_pos: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
-    p_k_plus_one_neg: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
-    q_k_plus_one_neg: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
-    p_k: polynomial = p_k_plus_one_pos * q_k_plus_one_neg + p_k_plus_one_neg * q_k_plus_one_pos
-    q_k: polynomial = q_k_plus_one_pos * q_k_plus_one_neg
+    # Calculate the polynomial p_k q_k. They are the fraction nominator and denominator, p_k+1(, 1), # p_k+1(, 0) aka p_k+1(, +1), # p_k+1(, -1) in paper
+    p_k_plus_one_one: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
+    q_k_plus_one_one: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(1))
+    p_k_plus_one_zero: polynomial = get_ext(f=circuit.p_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
+    q_k_plus_one_zero: polynomial = get_ext(f=circuit.q_i[next_layer_num], v=circuit.k_i(next_layer_num), last_element=Scalar(-1))
+    p_k: polynomial = p_k_plus_one_one * q_k_plus_one_zero + p_k_plus_one_zero * q_k_plus_one_one
+    q_k: polynomial = q_k_plus_one_one * q_k_plus_one_zero
     # TODO: make this random linear combination
     f: polynomial = p_k + q_k
     
-    # FIXME: how does it prove sumcheck without knowing r? thinking about add r, # FIXME v
-    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num), offset=0) 
-    # TODO replace this with merlin transcript
-    r_k_plus_one: Scalar = Scalar(sum(list(map(lambda x : int(x), sumcheck_proof)))) # FIXME: sum in this line should be hash
+    # NOTE: At this point, we haven't calculate the f value yet. therefore the first few elements are still variable rather than being evaluated at r_i.
+    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num)) 
     
-    return sumcheck_proof, sumcheck_r, r_k_plus_one
+    # Calculate f(r) by evaluate f at all r_i
+    f_result = polynomial(f.terms, f.constant)
+    f_result_value: Scalar = one
+    for j, x in enumerate(sumcheck_r):
+        if j == len(sumcheck_r) - 1:
+            f_result_value = f_result.eval_univariate(x)
+        f_result: polynomial = f_result.eval_i(x, j)
+
+    # TODO replace this with merlin transcript
+    r_k_plus_one: Scalar = Scalar(sum(list(map(lambda x : int(x), sumcheck_proof[len(sumcheck_proof) - 1])))) # FIXME: sum in this line should be hash
+    
+    return sumcheck_proof, sumcheck_r, r_k_plus_one, f_result_value
 
 """ 
 def prove(circuit: Circuit, D):

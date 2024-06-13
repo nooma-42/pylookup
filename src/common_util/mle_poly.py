@@ -6,6 +6,8 @@ from src.common_util.util import length_expansion
 class term:
     def __init__(self, coeff: Scalar, i: int, const: Scalar) -> None:
         self.coeff = coeff
+        if i < 0:
+            raise ValueError("i should be greater than 0")
         self.x_i = i
         self.const = const
     
@@ -69,6 +71,7 @@ class monomial:
                 return False
         return True
 
+    # TODO: change to __mul__
     def mult(self, n):
         self.coeff *= n
 
@@ -152,6 +155,7 @@ class polynomial:
     def eval_i(self, x_i: Scalar, i: int):
         """  
         evaluate variable index i with x_i
+        i starts from 1
         """
         if i == 0:
             raise ValueError("i should start from 1")
@@ -247,7 +251,7 @@ class polynomial:
                 highest = len(term.terms)
         return highest
     
-    def get_all_coefficients(self):
+    def get_all_coefficients(self) -> list[Scalar]:
         p = self.apply_all()
         exp = p.get_expansion()
         return list(reversed(exp.coeffs))
@@ -330,7 +334,7 @@ class polynomial:
 
 class UnivariateExpansion:
     def __init__(self, coeffs: list[Scalar], deg: int) -> None:
-        self.coeffs = coeffs
+        self.coeffs: list[Scalar] = coeffs
         self.deg = deg
 
     def __add__(self, other):
@@ -559,16 +563,20 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
 
 def get_ext(f: Callable[[list[Scalar]], Scalar], v: int, last_element=None) -> polynomial:
     """  
+    f: function to evaluate
+    v: numbers of bit in w
+    last_element: (optional) last element in w
+
+    Note: section 3.2 in logupgkr paper
     y: {0, 1}^v-1
         with the last element, the input is, for example, (y, +1) 
-    Note: section 3.2
     """
-    if last_element is None or (last_element is not Scalar(-1) and last_element is not Scalar(1)):
+    if (last_element is not Scalar(-1) and last_element is not Scalar(1)):
         raise ValueError("Last element should be either -1 or 1")
     w_set = generate_binary(v - 1)
-    for w in w_set:
-        w.append(last_element)
-    
+    if last_element is not None:
+        for w in w_set:
+            w.append(last_element)   
     try:
         if w_set[0] is None:
             raise ValueError("Invalid input or function")
@@ -643,7 +651,7 @@ def const2mexp(value: Scalar, v: int) -> MultivariateExpansion:
     term[0] = value
     return MultivariateExpansion([term], v)
 one = Scalar(1)
-neg_one = Scalar(-1)
+zero = Scalar(0)
 
 def generate_combinations(length) -> list[list[Scalar]]:
     """  
@@ -654,7 +662,7 @@ def generate_combinations(length) -> list[list[Scalar]]:
     else:
         result = []
         for combination in generate_combinations(length - 1):
-            result.append(combination + [neg_one])
+            result.append(combination + [zero])
             result.append(combination + [one])
         return result
     

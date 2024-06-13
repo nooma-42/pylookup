@@ -5,48 +5,50 @@ from src.common_util.curve import Scalar
 from src.common_util.mle_poly import generate_combinations
 from src.logupgkr.fractional_gkr import Circuit, Layer, Node
 
+# NOTE: it's 1 and -1 in the original paper, not sure the difference on performance
 one = Scalar(1)
-neg_one = Scalar(-1)
+zero = Scalar(0)
 
 """  
-Prover calculate
+Test fixture
+NOTE: Prover has to calculate
 """
 # Test1
-test_n = 1 # 2^n rows
-test_k = 1 # 2^k - 1 columns
-def test_m(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one]): Scalar(1),
+test1_n = 1 # 2^n rows
+test1_k = 1 # 2^k - 1 columns
+def test1_m(X: list[Scalar]) -> Scalar:
+    result = {tuple([zero]): Scalar(1),
             tuple([one]): Scalar(1)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
     else:
         return result
 
-def test_t(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one]): Scalar(1),
+def test1_t(X: list[Scalar]) -> Scalar:
+    result = {tuple([zero]): Scalar(1),
             tuple([one]): Scalar(2)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
     else:
         return result
 
-def test_w1(X: list[Scalar]) -> Scalar:
-    result: Scalar | None = {tuple([neg_one]): Scalar(1),
+def test1_w1(X: list[Scalar]) -> Scalar:
+    result: Scalar | None = {tuple([zero]): Scalar(1),
             tuple([one]): Scalar(2)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
     else:
         return result
 
-test_w = [test_w1]
+test1_w = [test1_w1]
 
 # Test2
 test2_n = 2 # 2^n rows
 test2_k = 2 # 2^k - 1 columns
 def test2_m(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one, neg_one]): Scalar(7),
-              tuple([neg_one, one]): Scalar(3),
-              tuple([one, neg_one]): Scalar(1),
+    result = {tuple([zero, zero]): Scalar(7),
+              tuple([zero, one]): Scalar(3),
+              tuple([one, zero]): Scalar(1),
               tuple([one, one]): Scalar(1)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
@@ -54,9 +56,9 @@ def test2_m(X: list[Scalar]) -> Scalar:
         return result
 
 def test2_t(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one, neg_one]): Scalar(1),
-            tuple([neg_one, one]): Scalar(2),
-            tuple([one, neg_one]): Scalar(3),
+    result = {tuple([zero, zero]): Scalar(1),
+            tuple([zero, one]): Scalar(2),
+            tuple([one, zero]): Scalar(3),
             tuple([one, one]): Scalar(4)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
@@ -64,9 +66,9 @@ def test2_t(X: list[Scalar]) -> Scalar:
         return result
 
 def test2_w1(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one, neg_one]): Scalar(1),
-            tuple([neg_one, one]): Scalar(2),
-            tuple([one, neg_one]): Scalar(3),
+    result = {tuple([zero, zero]): Scalar(1),
+            tuple([zero, one]): Scalar(2),
+            tuple([one, zero]): Scalar(3),
             tuple([one, one]): Scalar(1)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
@@ -74,19 +76,19 @@ def test2_w1(X: list[Scalar]) -> Scalar:
         return result
 
 def test2_w2(X: list[Scalar]) -> Scalar:
-    result = {tuple([neg_one, neg_one]): Scalar(2),
-            tuple([neg_one, one]): Scalar(1),
-            tuple([one, neg_one]): Scalar(4),
+    result = {tuple([zero, zero]): Scalar(2),
+            tuple([zero, one]): Scalar(1),
+            tuple([one, zero]): Scalar(4),
             tuple([one, one]): Scalar(2)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
     else:
         return result
 
-def test2_w3(X: list[Scalar]) -> Scalar: # TODO: figure out how to pad, we need to pad 1 extra column because of the 2^k - 1, I padded with 1
-    result = {tuple([neg_one, neg_one]): Scalar(1),
-            tuple([neg_one, one]): Scalar(1),
-            tuple([one, neg_one]): Scalar(1),
+def test2_w3(X: list[Scalar]) -> Scalar: # TODO: figure out how to pad, we need to pad 1 extra column because of the 2^k - 1, I padded with 1 UPDATE: shd be okay atm
+    result = {tuple([zero, zero]): Scalar(1),
+            tuple([zero, one]): Scalar(1),
+            tuple([one, zero]): Scalar(1),
             tuple([one, one]): Scalar(1)}.get(tuple(X))
     if result is None:
         raise ValueError("Invalid input")
@@ -94,11 +96,12 @@ def test2_w3(X: list[Scalar]) -> Scalar: # TODO: figure out how to pad, we need 
         return result
 
 test2_w = [test2_w1, test2_w2, test2_w3]
-test_a = Scalar(42) # random scalar given by the verifier
+test1_a = Scalar(42) # random scalar given by the verifier
 
 
 """  
-Predefine
+Function based on the paper
+NOTE: these are predefined
 """
 
 def i_y(Y: list[Scalar]):
@@ -114,7 +117,7 @@ def i_y(Y: list[Scalar]):
     # Convert the input list of Scalar to binary representation
     bits = []
     for value in Y:
-        if value == neg_one:
+        if value == zero:
             bits.append('0')
         else:
             bits.append('1')
@@ -146,7 +149,11 @@ def q(X, Y, t: Callable[[list[Scalar]], Scalar], w: list[Callable[[list[Scalar]]
     else:
         return a - w[i_y(Y)](X)              
 
-def generate_test_fractional_gkr_circuit_value() -> tuple[list[list[tuple[tuple[Scalar, ...], Scalar]]], list[list[tuple[tuple[Scalar, ...], Scalar]]]]:
+"""  
+Circuit generation
+"""
+
+def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -> dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]:
     def q_one_layer_up(qs):
         groups = defaultdict(list)
         length = max(len(t[0]) for t in qs)
@@ -199,9 +206,9 @@ def generate_test_fractional_gkr_circuit_value() -> tuple[list[list[tuple[tuple[
             if len(postfix_ps) != 2 or len(postfix_qs) != 2:
                 raise ValueError("Invalid input")
             p_k_plus_one_pos = postfix_ps.get(one)
-            p_k_plus_one_neg = postfix_ps.get(neg_one)
+            p_k_plus_one_neg = postfix_ps.get(zero)
             q_k_plus_one_pos = postfix_qs.get(one)
-            q_k_plus_one_neg = postfix_qs.get(neg_one)
+            q_k_plus_one_neg = postfix_qs.get(zero)
             if p_k_plus_one_neg is None or p_k_plus_one_pos is None or q_k_plus_one_neg is None or q_k_plus_one_pos is None:
                 raise ValueError("Invalid input")
             nominators.append((pre, p_k_plus_one_pos * q_k_plus_one_neg + p_k_plus_one_neg * q_k_plus_one_pos))
@@ -247,66 +254,99 @@ def generate_test_fractional_gkr_circuit_value() -> tuple[list[list[tuple[tuple[
     # Generate the bottom most layer
     index_and_p = []
     index_and_q = []
-    for X in generate_combinations(test2_n):
-            for Y in generate_combinations(test2_k):
+    for X in generate_combinations(test_n):
+            for Y in generate_combinations(test_k):
                 index_and_p.append((tuple(X+Y), p(X, Y, test2_m)))
-                index_and_q.append((tuple(X+Y), q(X, Y, test2_t, test2_w, test_a)))
+                index_and_q.append((tuple(X+Y), q(X, Y, test2_t, test_w, test_a)))
     # Generate the layers above till the top
     index_and_p_layers, index_and_q_layers  = perform_layers(index_and_p, index_and_q, config="p")
+
+    def combine_layers(p_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]], q_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]]) -> list[list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]:
+        combined_layers = []
+
+        for round_p, round_q in zip(p_layers, q_layers):
+            round_combined = []
+            for prefix_p, value_p in round_p:
+                for prefix_q, value_q in round_q:
+                    if prefix_p == prefix_q:
+                        round_combined.append((prefix_p, value_p, value_q))
+                        break
+            combined_layers.append(round_combined)
+
+        return combined_layers
+
     def print_layers(layers):
         print("Printing layers:")
         for i, round_result in enumerate(layers):
             print(f"Round {i}:")
-            for prefix, value in round_result:
-                print(f"({prefix}, {value})")
+            for item in round_result:
+                if len(item) == 2:
+                    prefix, value = item
+                    print(f"({prefix}, {value})")
+                elif len(item) == 3:
+                    prefix, value_p, value_q = item
+                    print(f"({prefix}, {value_p}, {value_q})")
             print()
-    # print_layers(index_and_p_layers)
-    # print_layers(index_and_q_layers)
-    return index_and_p_layers, index_and_q_layers
+    index_and_layers: list[list[tuple[tuple[Scalar, ...], Scalar, Scalar]]] = combine_layers(index_and_p_layers, index_and_q_layers)
+    #print_layers(index_and_p_layers)
+    #print_layers(index_and_q_layers)
+    #print_layers(index_and_layers)
+    index_and_layers.reverse()
+    return {i: layer for i, layer in enumerate(index_and_layers)}
 
 
-def init_test_circuit():
-    # index_and_p_layers represents [(index: tuple, p: Scalar), ...]
-    index_and_p_layers, index_and_q_layers = generate_test_fractional_gkr_circuit_value()
-    circuit = Circuit(5)
-    
-    layer = Layer(
-        {
-            0: Node(),
-            1: Node(),
-        }
-    )
-    #p_0 = Node([0], Scalar(0))
-    #q_0 = Node([1], Scalar(2430480)) # 38, 39, 40, 41
+def init_test_circuit(test_n, test_k, test_w, test_a) -> Circuit:
+    def generate_p_q_functions(index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]], config=None) -> dict[int, Callable[[list[Scalar]], Scalar]]:
+        if config not in ["p", "q"]:
+            raise ValueError("Invalid config")
+        i_functions = {}
 
-    def W0func(arr):
-        if(arr == [Scalar(0)]):
-            return Scalar(36)
-        elif (arr == [Scalar(1)]):
-            return Scalar(6)
-    
+        for layer_idx, layer in index_and_layers.items():
+            layer_map = {tuple(prefix): q for prefix, _, q in layer} if config == "q" else {tuple(prefix): p for prefix, p, _ in layer}
 
-    
-    """ c.layers[0].add_func(W0func) """
-    """ c.add_node(0, 0, [0], 36, left=b1, right=b2) """
-    """ c.add_node(0, 1, [1], 6, left=b3, right=b4) """
+            def layer_function(arr: list[int]) -> Scalar:
+                prefix = tuple(arr)
+                if prefix in layer_map:
+                    return layer_map[prefix]
+                else:
+                    raise ValueError(f"Invalid input array for layer {layer_idx}: {arr}")
+
+            i_functions[layer_idx] = layer_function
+        return i_functions
+
+    def generate_node_dict(index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]) -> dict[int, dict[int, Node]]:
+        node_dicts = {}
+        for layer_idx, layer in index_and_layers.items():
+            node_dict = {}
+            for idx, (prefix, p, q) in enumerate(layer):
+                node_dict[idx] = Node(list(prefix), p, q)
+            node_dicts[layer_idx] = node_dict
+        return node_dicts
+
+    # index_and_layers represents [(index: tuple, p: Scalar, q: Scalar), ...]
+    index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]] = generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a)
+    node_dicts: dict[int, dict[int, Node]] = generate_node_dict(index_and_layers)
+    layers: dict[int, Layer] = {layer_idx: Layer(node_dict) for layer_idx, node_dict in node_dicts.items()}
+    p_i = generate_p_q_functions(index_and_layers, config="p")
+    q_i = generate_p_q_functions(index_and_layers, config="q")
+    return Circuit(layers, p_i, q_i)
 
 class TestLogUPGKR(unittest.TestCase):
     def test_p_and_q_single_column(self):
         fraction_sum = Scalar(0)
         # test_n is row and test_k is column
-        for X in generate_combinations(test_n):
-            for Y in generate_combinations(test_k):
-                fraction_sum = fraction_sum + p(X, Y, test_m) / q(X, Y, test_t, test_w, test_a)
-                print(q(X, Y, test_t, test_w, test_a))
+        for X in generate_combinations(test1_n):
+            for Y in generate_combinations(test1_k):
+                fraction_sum = fraction_sum + p(X, Y, test1_m) / q(X, Y, test1_t, test1_w, test1_a)
+                print(q(X, Y, test1_t, test1_w, test1_a))
         assert fraction_sum == Scalar(0)
     def test_p_and_q_two_column(self):
         fraction_sum = Scalar(0)
         for X in generate_combinations(test2_n):
             for Y in generate_combinations(test2_k):
-                fraction_sum = fraction_sum + p(X, Y, test2_m) / q(X, Y, test2_t, test2_w, test_a)
-                print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test_a)}")
+                fraction_sum = fraction_sum + p(X, Y, test2_m) / q(X, Y, test2_t, test2_w, test1_a)
+                print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test1_a)}")
         assert fraction_sum == Scalar(0)
     def test_prove_layer(self):
-        generate_test_fractional_gkr_circuit_value()
+        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
         pass

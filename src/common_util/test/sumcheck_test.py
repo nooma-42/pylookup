@@ -109,7 +109,7 @@ class TestSumcheck(unittest.TestCase):
                 claim += eval_expansion(multi_expansion, assignment)
             
             proof, r = prove_sumcheck(f, v, 0)
-            self.assertTrue(verify_sumcheck(claim, proof, r, v), "Verification failed")
+            self.assertTrue(verify_sumcheck(claim, proof, r, v, f), "Verification failed")
         except Exception as e:
             self.fail(e)
 

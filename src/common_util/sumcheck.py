@@ -1,4 +1,4 @@
-# Code copied from https://github.com/jeong0982/gkr
+# Code modified from https://github.com/jeong0982/gkr
 #mle sumcheck instead of binary
 from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate
 from src.common_util.curve import Scalar
@@ -23,21 +23,21 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
     r: list[Scalar] = [] # hash of the coefficients of each round as a randomness
     # first round
     # g1(X1)=∑(x2,⋯,xv)∈{0,1}^v g(X_1,x_2,⋯,x_v)    
-    g_1 = polynomial([])
-    assignments = generate_binary(v - 1)
+    if v > 1:
+        g_1 = polynomial([])
+        assignments = generate_binary(v - 1)
+        for assignment in assignments:
+            g_1_sub = polynomial(g.terms[:], g.constant)
+            
+            # Loop through every bit of the assignment
+            for i, x_i in enumerate(assignment):
+                idx = i + 2 + offset # the offset begins from 0, meaning index begins from x_2, because i + 2 + start
+                g_1_sub = g_1_sub.eval_i(x_i, idx)
+            g_1 += g_1_sub
+        proof.append(g_1.get_all_coefficients()) # TODO: not sure if the proof should contain the coefficient of the polynomial
 
-    for assignment in assignments:
-        g_1_sub = polynomial(g.terms[:], g.constant)
-        
-        # Loop through every bit of the assignment
-        for i, x_i in enumerate(assignment):
-            idx = i + 2 + offset # the offset begins from 0, meaning index begins from x_2, because i + 2 + start
-            g_1_sub = g_1_sub.eval_i(x_i, idx)
-        g_1 += g_1_sub
-    proof.append(g_1.get_all_coefficients())
-
-    r_1 = Scalar(sum(list(map(lambda x : int(x), g_1.get_all_coefficients())))) # FIXME: sum in this line should be hash
-    r.append(r_1)
+        r_1 = Scalar(sum(list(map(lambda x : int(x), g_1.get_all_coefficients())))) # FIXME: sum in this line should be hash
+        r.append(r_1)
 
     # 1 < j < v round
     for j in range(1, v - 1):
@@ -66,16 +66,21 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
         g_v = g_v.eval_i(r_i, idx)
     proof.append(g_v.get_all_coefficients())
 
-    r_v = Scalar(sum(list(map(lambda x : int(x), proof[len(proof) - 1]))))
+    if v == 1:
+        r_v = Scalar(sum(list(map(lambda x : int(x), g.get_all_coefficients())))) # TODO is this correct way to treat univariate polynomial?
+    else:
+        r_v = Scalar(sum(list(map(lambda x : int(x), proof[len(proof) - 1])))) #FIXME sum in this line should be hash
     r.append(r_v)
 
     return proof, r
 
 # TODO accommodate +1 -1 case 
-def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int) -> bool:
+def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int, g: polynomial) -> bool:
     bn = len(proof)
+    # Univariate case
     if(v == 1 and (eval_univariate(proof[0], Scalar.zero()) + eval_univariate(proof[0], Scalar.one())) == claim):
         return True
+    # round 1 to round v: g_j-1(r_j-1) ?= g_j(0) + g_j(1)
     expected = claim
     for i in range(bn):
         q_zero = eval_univariate(proof[i], Scalar.zero())

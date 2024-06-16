@@ -3,7 +3,7 @@ from typing import Callable
 from collections import defaultdict
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import generate_combinations
-from src.logupgkr.fractional_gkr import Circuit, Layer, Node
+from src.logupgkr.fractional_gkr import Circuit, Layer, Node, Proof, prove_layer, verify_layer, prove, verify
 
 # NOTE: it's 1 and -1 in the original paper, not sure the difference on performance
 one = Scalar(1)
@@ -153,7 +153,7 @@ def q(X, Y, t: Callable[[list[Scalar]], Scalar], w: list[Callable[[list[Scalar]]
 Circuit generation
 """
 
-def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -> dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]:
+def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -> dict[int, dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]]:
     def q_one_layer_up(qs):
         groups = defaultdict(list)
         length = max(len(t[0]) for t in qs)
@@ -261,17 +261,17 @@ def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -
     # Generate the layers above till the top
     index_and_p_layers, index_and_q_layers  = perform_layers(index_and_p, index_and_q, config="p")
 
-    def combine_layers(p_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]], q_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]]) -> list[list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]:
+    def combine_layers(p_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]], q_layers: list[list[tuple[tuple[Scalar, ...], Scalar]]]) -> list[dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]]:
         combined_layers = []
 
-        for round_p, round_q in zip(p_layers, q_layers):
-            round_combined = []
-            for prefix_p, value_p in round_p:
-                for prefix_q, value_q in round_q:
+        for p, q in zip(p_layers, q_layers):
+            layer_combined = {}
+            for prefix_p, value_p in p:
+                for prefix_q, value_q in q:
                     if prefix_p == prefix_q:
-                        round_combined.append((prefix_p, value_p, value_q))
+                        layer_combined[prefix_p] = (value_p, value_q)
                         break
-            combined_layers.append(round_combined)
+            combined_layers.append(layer_combined)
 
         return combined_layers
 
@@ -287,7 +287,7 @@ def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -
                     prefix, value_p, value_q = item
                     print(f"({prefix}, {value_p}, {value_q})")
             print()
-    index_and_layers: list[list[tuple[tuple[Scalar, ...], Scalar, Scalar]]] = combine_layers(index_and_p_layers, index_and_q_layers)
+    index_and_layers: list[dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]] = combine_layers(index_and_p_layers, index_and_q_layers)
     #print_layers(index_and_p_layers)
     #print_layers(index_and_q_layers)
     #print_layers(index_and_layers)
@@ -296,35 +296,40 @@ def generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a) -
 
 
 def init_test_circuit(test_n, test_k, test_w, test_a) -> Circuit:
-    def generate_p_q_functions(index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]], config=None) -> dict[int, Callable[[list[Scalar]], Scalar]]:
+    def generate_p_q_functions(index_and_layers: dict[int, dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]], config=None) -> dict[int, Callable[[list[Scalar]], Scalar]]:
+        """  
+        params: 
+        index_and_layers: {layer_index: [(prefix, p, q), (prefix, p, q), ...]}
+        """
         if config not in ["p", "q"]:
             raise ValueError("Invalid config")
         i_functions = {}
 
-        for layer_idx, layer in index_and_layers.items():
-            layer_map = {tuple(prefix): q for prefix, _, q in layer} if config == "q" else {tuple(prefix): p for prefix, p, _ in layer}
-
-            def layer_function(arr: list[int]) -> Scalar:
+        for layer_idx, _ in index_and_layers.items():
+            def layer_function(arr: list[Scalar]) -> Scalar:
                 prefix = tuple(arr)
-                if prefix in layer_map:
-                    return layer_map[prefix]
+                length = len(prefix) # length = layer
+                layer_map: dict[tuple[Scalar, ...], tuple[Scalar, Scalar]] = index_and_layers[length]
+                if layer_map[prefix] is None:
+                    raise ValueError(f"Invalid input array for layer {length}: {arr}")
                 else:
-                    raise ValueError(f"Invalid input array for layer {layer_idx}: {arr}")
+                    return layer_map[prefix][0] if config == "p" else layer_map[prefix][1]
 
             i_functions[layer_idx] = layer_function
         return i_functions
 
-    def generate_node_dict(index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]]) -> dict[int, dict[int, Node]]:
+    def generate_node_dict(index_and_layers: dict[int, dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]]) -> dict[int, dict[int, Node]]:
         node_dicts = {}
         for layer_idx, layer in index_and_layers.items():
             node_dict = {}
-            for idx, (prefix, p, q) in enumerate(layer):
+            #for idx, (prefix, p, q) in enumerate(layer):
+            for idx, (prefix, (p, q)) in enumerate(layer.items()):
                 node_dict[idx] = Node(list(prefix), p, q)
             node_dicts[layer_idx] = node_dict
         return node_dicts
 
     # index_and_layers represents [(index: tuple, p: Scalar, q: Scalar), ...]
-    index_and_layers: dict[int, list[tuple[tuple[Scalar, ...], Scalar, Scalar]]] = generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a)
+    index_and_layers: dict[int, dict[tuple[Scalar, ...], tuple[Scalar, Scalar]]] = generate_test_fractional_gkr_circuit_value(test_n, test_k, test_w, test_a)
     node_dicts: dict[int, dict[int, Node]] = generate_node_dict(index_and_layers)
     layers: dict[int, Layer] = {layer_idx: Layer(node_dict) for layer_idx, node_dict in node_dicts.items()}
     p_i = generate_p_q_functions(index_and_layers, config="p")
@@ -347,6 +352,37 @@ class TestLogUPGKR(unittest.TestCase):
                 fraction_sum = fraction_sum + p(X, Y, test2_m) / q(X, Y, test2_t, test2_w, test1_a)
                 print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test1_a)}")
         assert fraction_sum == Scalar(0)
-    def test_prove_layer(self):
+    def test_prove_layer_0(self):
         circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        pass
+        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 0, [])
+        claim = Scalar(0)+Scalar(44895956272445315082240000)
+        verify_layer(
+            claim, 
+            sumcheck_proof, 
+            sumcheck_r, 
+            0,
+            r_k_star,
+            p_k_plus_one_reduced, 
+            q_k_plus_one_reduced
+        )
+    def test_prove_layer_1(self):
+        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
+        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 1, [Scalar(1)])
+        # all p + λ(all q), λ = 1
+        claim = Scalar(727916033600)+Scalar(7414796864000)+Scalar(21888242871839275222246405745257275088548364400416034343698204185981393171933)+Scalar(6054913856160)
+        verify_layer(
+            claim, 
+            sumcheck_proof, 
+            sumcheck_r, 
+            1,
+            r_k_star,
+            p_k_plus_one_reduced, 
+            q_k_plus_one_reduced
+        )
+    def test_prove(self):
+        circuit: Circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
+        prove(circuit)
+    def test_verify(self):
+        circuit: Circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
+        proof: Proof = prove(circuit)
+        verify(proof)

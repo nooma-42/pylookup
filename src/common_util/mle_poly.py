@@ -563,29 +563,37 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
 
 def get_ext(f: Callable[[list[Scalar]], Scalar], v: int, last_element=None) -> polynomial:
     """  
+    params:
     f: function to evaluate
     v: numbers of bit in w
     last_element: (optional) last element in w
 
+    returns:
+
+    
     Note: section 3.2 in logupgkr paper
     y: {0, 1}^v-1
         with the last element, the input is, for example, (y, +1) 
+    or
+    y: {0, 1}^v
+        without the last element be set. (y, +1) or (y, 0)
     """
-    if (last_element is not Scalar(-1) and last_element is not Scalar(1)):
-        raise ValueError("Last element should be either -1 or 1")
-    w_set = generate_binary(v - 1)
+    if last_element is None:
+        w_set: list[list[Scalar]] = generate_binary(v)
+    elif (last_element != zero and last_element != one):
+        raise ValueError("Last element should be either 0 or 1")
+    else:
+        w_set: list[list[Scalar]] = generate_binary(v - 1)
     if last_element is not None:
         for w in w_set:
             w.append(last_element)   
     try:
-        if w_set[0] is None:
-            raise ValueError("Invalid input or function")
         f(w_set[0])
     except ValueError as e:
         raise ValueError("Invalid input or function") from e
-    ext_f: list[monomial] = []
     
     # construct monomial from the input and accumulate all monomial to single polynomial
+    ext_f: list[monomial] = []
     for w in w_set:
         res = chi_w(w)
         if f(w) == Scalar.zero():

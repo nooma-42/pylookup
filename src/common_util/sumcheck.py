@@ -5,6 +5,7 @@ from src.common_util.curve import Scalar
 from src.common_util.util import *
 
 def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]], list[Scalar]]:
+    # TODO: think about removing offset
     """
     params:
     g: the polynomial to prove
@@ -75,7 +76,24 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
     return proof, r
 
 # TODO accommodate +1 -1 case 
-def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int, g: polynomial) -> bool:
+def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int, config="DEFAULT", g=None, p_q_plus_one_dict=None) -> bool:
+    """  
+    params:
+    v: number of variables
+    config: "DEFAULT" or "FRACTIONAL_GKR"
+    
+    With DEFAULT config:
+    g: 
+        optional
+        the polynomial to prove, verifier evaluate herself
+    
+    With FRACTIONAL_GKR config:
+    p_q_plus_one_dict: 
+        optional
+        dict[str, Scalar]
+        given as univariate polynomial, q'(x), p'(x)
+
+    """
     bn = len(proof)
     # Univariate case
     if(v == 1 and (eval_univariate(proof[0], Scalar.zero()) + eval_univariate(proof[0], Scalar.one())) == claim):

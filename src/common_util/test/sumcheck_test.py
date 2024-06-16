@@ -108,8 +108,16 @@ class TestSumcheck(unittest.TestCase):
                 multi_expansion = get_multi_ext(test_polynomial_function2, v) 
                 claim += eval_expansion(multi_expansion, assignment)
             
+            """  
+            # or you can do this
+            for j, x in enumerate(sumcheck_r, 1):
+                if j == len(sumcheck_r):
+                    f_result_value = f_result.eval_univariate(x)
+                f_result: polynomial = f_result.eval_i(x, j)
+            """
+
             proof, r = prove_sumcheck(f, v, 0)
-            self.assertTrue(verify_sumcheck(claim, proof, r, v, f), "Verification failed")
+            self.assertTrue(verify_sumcheck(claim, proof, r, v, config="DEFAULT", g=f), "Verification failed")
         except Exception as e:
             self.fail(e)
 

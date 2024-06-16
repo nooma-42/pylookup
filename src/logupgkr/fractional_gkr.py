@@ -8,6 +8,7 @@ from src.common_util.mle_poly import (
     monomial, term, polynomial
 )
 from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
+from src.logupgkr.transcript import Transcript
 
 one = Scalar(1)
 zero = Scalar(0)
@@ -155,7 +156,7 @@ def ell(p1: list[Scalar], p2: list[Scalar], t: Scalar, k_i_plus_one: int) -> lis
     return output
 
 
-def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar]) -> tuple[list[list[Scalar]], list[Scalar], list[Scalar], Scalar, Scalar, list[Scalar], list[Scalar]]:
+def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar], transcript: Transcript) -> tuple[list[list[Scalar]], list[Scalar], list[Scalar], Scalar, Scalar, list[Scalar], list[Scalar]]:
     """ 
     Prove each layer with sumcheck protocol
 
@@ -199,7 +200,7 @@ def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar]) -> tu
         f_result: polynomial = f_result.eval_i(x, j)
 
     # 3. Run sumcheck protocol for each adjacent layers, NOTE: sumcheck_r
-    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num)) 
+    sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num), transcript=transcript) 
 
     # 4. Reduce multiple polynomial p(y, +1), p(y, 0) to p'() univariate polynomials and q(y, +1), q(y, 0) to q'() for verifier
     next_p: polynomial = get_ext(circuit.p_i[next_layer_num], circuit.k_i(next_layer_num))
@@ -213,7 +214,7 @@ def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar]) -> tu
     return sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced
 
 def verify_layer(m: Scalar, sumcheck_proof: list[list[Scalar]], sumcheck_r: list[Scalar], k: int, r_k_star: Scalar, p_k_plus_one_reduced: list[Scalar], q_k_plus_one_reduced: list[Scalar]) -> tuple[bool, Scalar|None]:
-    """  
+    """
     params:
     m: claimed value of f(r) at the current layer
 
@@ -243,10 +244,11 @@ def verify_layer(m: Scalar, sumcheck_proof: list[list[Scalar]], sumcheck_r: list
 
 def prove(circuit: Circuit):
     # At the start of the protocol P sends a function D : {0, 1}k0 → F claimed to equal W0 (the function mapping output gate labels to output values)
+    transcript = Transcript(b"fractional_gkr_please_pass_verification_QAQ")
     proof = Proof()
     proof.D = get_multi_ext(circuit.p_i[0], circuit.k_i(0)) + get_multi_ext(circuit.q_i[0], circuit.k_i(0)) 
     proof.z = [[]] * circuit.depth()
-    proof.z[0] = [Scalar.zero()] * circuit.k_i(0)
+    proof.z[0] = [Scalar.zero()] * circuit.k_i(0) # k_0 is 0 in this case
     
     for i in range(len(proof.z[0])):
         proof.z[0][i] = Scalar(1) # assuming this random scalar is given by the verifier

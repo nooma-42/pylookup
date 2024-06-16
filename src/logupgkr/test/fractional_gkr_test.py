@@ -367,7 +367,7 @@ class TestLogUPGKR(unittest.TestCase):
         )
     def test_prove_layer_1(self):
         circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 1, [Scalar(1)])
+        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 1, [Scalar(42)])
         # all p + λ(all q), λ = 1
         claim = Scalar(727916033600)+Scalar(7414796864000)+Scalar(21888242871839275222246405745257275088548364400416034343698204185981393171933)+Scalar(6054913856160)
         verify_layer(

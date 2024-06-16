@@ -3,8 +3,14 @@
 from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate
 from src.common_util.curve import Scalar
 from src.common_util.util import *
+from src.logupgkr.transcript import Transcript
 
-def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]], list[Scalar]]:
+def append_squeeze(transcript: Transcript, items: list[Scalar]) -> Scalar:
+    for coeff in items:
+        transcript.append_scalar(label=b"sumcheck_coeff", item=coeff)
+    return transcript.get_and_append_challenge(b"sumcheck_squeeze_challenge")
+
+def prove_sumcheck(g: polynomial, v: int, transcript: Transcript, offset=0) -> tuple[list[list[Scalar]], list[Scalar]]:
     # TODO: think about removing offset
     """
     params:
@@ -36,8 +42,7 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
                 g_1_sub = g_1_sub.eval_i(x_i, idx)
             g_1 += g_1_sub
         proof.append(g_1.get_all_coefficients()) # TODO: not sure if the proof should contain the coefficient of the polynomial
-
-        r_1 = Scalar(sum(list(map(lambda x : int(x), g_1.get_all_coefficients())))) # FIXME: sum in this line should be hash
+        r_1 = append_squeeze(transcript, g_1.get_all_coefficients())
         r.append(r_1)
 
     # 1 < j < v round
@@ -56,8 +61,7 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
                 g_j_sub = g_j_sub.eval_i(x_i, idx)
             res_g_j += g_j_sub
         proof.append(res_g_j.get_all_coefficients())
-
-        r_n = Scalar(sum(list(map(lambda x : int(x), proof[len(proof) - 1]))))
+        r_n = append_squeeze(transcript, proof[len(proof) - 1])
         r.append(r_n)
 
     # last round
@@ -68,15 +72,15 @@ def prove_sumcheck(g: polynomial, v: int, offset=0) -> tuple[list[list[Scalar]],
     proof.append(g_v.get_all_coefficients())
 
     if v == 1:
-        r_v = Scalar(sum(list(map(lambda x : int(x), g.get_all_coefficients())))) # TODO is this correct way to treat univariate polynomial?
+        r_v = append_squeeze(transcript, g.get_all_coefficients()) # TODO is this correct way to treat univariate polynomial?
     else:
-        r_v = Scalar(sum(list(map(lambda x : int(x), proof[len(proof) - 1])))) #FIXME sum in this line should be hash
+        r_v = append_squeeze(transcript, proof[len(proof) - 1]) #FIXME sum in this line should be hash
     r.append(r_v)
 
     return proof, r
 
 # TODO accommodate +1 -1 case 
-def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int, config="DEFAULT", g=None, p_q_plus_one_dict=None) -> bool:
+def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v: int, transcript: Transcript, config="DEFAULT", g=None, p_q_plus_one_dict=None) -> bool:
     """  
     params:
     v: number of variables
@@ -106,7 +110,7 @@ def verify_sumcheck(claim: Scalar, proof: list[list[Scalar]], r: list[Scalar], v
 
         if q_zero + q_one != expected:
             return False
-        if Scalar(sum(list(map(lambda x : int(x), proof[i])))) != r[i]:
+        if append_squeeze(transcript, proof[i]) != r[i]:
             return False
         expected = eval_univariate(proof[i], r[i])
 

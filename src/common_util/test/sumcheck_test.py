@@ -5,6 +5,7 @@ from src.common_util.mle_poly import (
     polynomial, term, monomial, 
     generate_binary, eval_ext, get_multi_ext, eval_expansion
 )
+from src.logupgkr.transcript import Transcript # change to common transcript
 
 def test_polynomial():
     a = Scalar(2)
@@ -78,9 +79,10 @@ def W1Func(bitstring):
 
 class TestSumcheck(unittest.TestCase):
     def test_prove_sumcheck(self):
+        transcript = Transcript(b"test_sumcheck")
         try:
             f = test_polynomial()
-            prove_sumcheck(f, 3, 1)
+            prove_sumcheck(f, 3, transcript, 1)
         except Exception as e:
             self.fail(e)
     
@@ -95,6 +97,7 @@ class TestSumcheck(unittest.TestCase):
         print(get_multi_ext(D_func, 1))
 
     def test_verify_sumcheck(self):
+        transcript = Transcript(b"test_sumcheck")
         try:
             v = 2
 
@@ -116,13 +119,15 @@ class TestSumcheck(unittest.TestCase):
                 f_result: polynomial = f_result.eval_i(x, j)
             """
 
-            proof, r = prove_sumcheck(f, v, 0)
-            self.assertTrue(verify_sumcheck(claim, proof, r, v, config="DEFAULT", g=f), "Verification failed")
+            proof, r = prove_sumcheck(f, v, transcript, 0)
+            transcript2 = Transcript(b"test_sumcheck")
+            self.assertTrue(verify_sumcheck(claim, proof, r, v, transcript2, config="DEFAULT", g=f), "Verification failed")
         except Exception as e:
             self.fail(e)
 
     def test_prove_sumcheck_start_idx(self):
+        transcript = Transcript(b"test_sumcheck")
         v = 2
         f = test_polynomial2()
         # start from x_3
-        prove_sumcheck(f, v, 1)
+        prove_sumcheck(f, v, transcript, 1)

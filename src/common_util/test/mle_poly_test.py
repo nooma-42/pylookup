@@ -55,6 +55,25 @@ def test_polynomial_function(values):
     x_1, x_2 = values
     return 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
 
+def test_polynomial3():
+    a = Scalar(2)
+    b = Scalar(42)
+    c = Scalar(4)
+    d = Scalar(5)
+    e = Scalar(67)
+
+    term1 = term(coeff=a, i=1, const=e)  # (2 * x_1 + 67)
+    term2 = term(coeff=b, i=2, const=c)  # (42 * x_2 + 4)
+    
+    monomial1 = monomial(coeff=d, terms=[term1, term2])  # 5 * ((2 * x_1 + 67) * (42 * x_2 + 4))
+    poly = polynomial(terms=[monomial1], c=Scalar(6))  # 5 * ((2 * x_1 + 67) * (42 * x_2 + 4)) + 6
+    return poly
+
+def test_polynomial_function3(values):
+    # 5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
+    x_1, x_2 = values
+    return 5 * ((2 * x_1 + 67) * (42 * x_2 + 4)) + 6
+
 zero = Scalar.zero()
 one = Scalar.one()
 
@@ -131,7 +150,26 @@ class TestMlePoly(unittest.TestCase):
         
         # Assert the result is as expected
         self.assertEqual(result, expected)
-        
+    
+    def test_compare_eval_exansion_polynomial_evaluate(self):
+        """  
+        There are two ways to calculate the polynomial
+        1. get_multi_ext -> eval_expansion
+        2. POLY.evaluate
+        """
+        f = test_polynomial3()
+        sumcheck_sum = zero
+        multi_expansion = get_multi_ext(test_polynomial_function3, 2) 
+        sumcheck_sum_multiexp = zero
+        for i in generate_binary(2):
+            sumcheck_sum += f.evaluate(i)
+            sumcheck_sum_multiexp += eval_expansion(multi_expansion, i)
+        assert sumcheck_sum == sumcheck_sum_multiexp
+
+    def test_evaluate_polynomial(self):
+        poly = test_polynomial()
+        self.assertEqual(poly.evaluate(Scalar(1), Scalar(1)), 111)
+
     def test_eval_ext(self):
         # Define a simple polynomial function f(x, y) = x + y
         def f(w):

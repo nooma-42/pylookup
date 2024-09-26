@@ -4,10 +4,10 @@ from typing import Callable
 from dataclasses import dataclass
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import (
-    get_multi_ext, eval_expansion, eval_univariate, get_ext,
-    monomial, term, polynomial
+    get_multi_ext, eval_expansion, eval_univariate, get_ext, generate_binary,
+    monomial, term, polynomial,
 )
-from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
+from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck, append_squeeze
 from src.logupgkr.transcript import Transcript
 
 one = Scalar(1)
@@ -68,6 +68,7 @@ class Circuit:
         return self.layers[layer].nodes_length()
     
     def k_i(self, layer):
+        """ bit length of the layer, from layer length """
         return int(math.log2(self.layer_length(layer)))
 
 @dataclass
@@ -87,6 +88,7 @@ class Proof:
       self.d : int = 0 # depth of the circuit
       self.input_func : list[list[Scalar]] = [] # input function, the bottom most layer function
 
+# TODO add test
 def reduce_multiple_polynomial(b: list[Scalar], c: list[Scalar], w: polynomial) -> list[Scalar]:
     """
     reduce multiple polynomial p(y, +1), p(y, 0) to p'() univariate polynomials and q(y, +1), q(y, 0) to q'() for verifier
@@ -106,19 +108,21 @@ def reduce_multiple_polynomial(b: list[Scalar], c: list[Scalar], w: polynomial) 
     lemma 3.8 in Proof Argument and Zero Knowledge
     """
     assert(len(b) == len(c))
-    t = []
+    t: dict[int, term] = {}
     new_poly_terms = []
-    for b_i, c_i in zip(b, c):
-        new_const = b_i
-        gradient = c_i - b_i
-        t.append(term(gradient, 1, new_const))
+    for i, (b_i, c_i) in enumerate(zip(b, c), 1):
+        new_const: Scalar = b_i
+        gradient: Scalar = c_i - b_i
+        t[i] = (term(gradient, i, new_const))
     
     for mono in w.terms:
-        new_terms = []
-        for each in mono.terms:
-            new_term = t[each.x_i - 1] * each.coeff
-            new_term.const += each.const
-            new_terms.append(new_term)
+        new_terms: list[term] = []
+        for i, each in enumerate(mono.terms):
+            new_term: term | None = t[each.x_i] * each.coeff
+            if new_term is not None:
+                new_term.const += each.const
+                new_terms.append(new_term)
+            # FIXME else
         new_poly_terms.append(monomial(mono.coeff, new_terms))
 
     poly = polynomial(new_poly_terms, w.constant)
@@ -155,8 +159,20 @@ def ell(p1: list[Scalar], p2: list[Scalar], t: Scalar, k_i_plus_one: int) -> lis
         output = output[:k_i_plus_one]
     return output
 
+def test_layer1_function(values):
+    x_1 =values[0]
+    return 21888242871839275222246405745257275088548364400416029936229326220907681519617 * ((1 * x_1 + 0) * (21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_1 + 1)) + Scalar(4407468877965668126976000) * ((Scalar(21888242871839275222246405745257275088548364400416034343698204186575808495616) * x_1 + 1) * (1 * x_1 + 0)) + Scalar(44895956272445315082240000) * ((1 * x_1 + 0) * (21888242871839275222246405745257275088548364400416034343698204186575808495616 * x_1 + 1))
 
-def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar], transcript: Transcript) -> tuple[list[list[Scalar]], list[Scalar], list[Scalar], Scalar, Scalar, list[Scalar], list[Scalar]]:
+
+def prove_layer(
+        circuit: Circuit, 
+        current_layer_num: int, 
+        r: list[Scalar], 
+        transcript: Transcript
+    ) -> tuple[
+        list[list[Scalar]], 
+        list[Scalar], 
+        list[Scalar], Scalar, Scalar, list[Scalar], list[Scalar]]:
     """ 
     Prove each layer with sumcheck protocol
 
@@ -168,8 +184,8 @@ def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar], trans
     returns:
     sumcheck_proof: list[list[Scalar]], containing all the coefficients of each round
     sumcheck_r: list[Scalar], hash of the coefficients of each round as a randomness
-    r_k_plus_one: Scalar
-    f_result_value: Scalar
+    r_k_plus_one: Scalar, a random scalar vector. This will be used in sumcheck in next layer
+    f_result_value: Scalar, the value of f(r) at the current layer
 
     NOTE:
     At each layer, we need to:
@@ -190,30 +206,57 @@ def prove_layer(circuit: Circuit, current_layer_num: int, r: list[Scalar], trans
     # TODO: make this random linear combined
     f: polynomial = p_k + q_k
     
-    # 2. Claim f(r) by evaluate f at r_k from previous layer
-    f_result = polynomial(f.terms, f.constant)
-    f_result_value: Scalar = one
-    assert len(r) == circuit.k_i(current_layer_num)
-    for j, x in enumerate(r, 1):
-        if j == len(r):
-            f_result_value = f_result.eval_univariate(x)
-        f_result: polynomial = f_result.eval_i(x, j)
+    sumcheck_sum = zero
+    for i in generate_binary(circuit.k_i(next_layer_num)):
+        sumcheck_sum += f.evaluate(i)
 
+    # 2. Claim f(r) by evaluate f at r_k from previous layer
+    # P claims that Σb, c∈ {0, 1}k_i+1 f_r_i(i)(b, c) = m_i    
+    # f_result_value is a polynomial evaluated
+    f_result_value: Scalar = one
+    assert len(r) == circuit.k_i(next_layer_num), "the bit length of the next layer must be equal to the length of random scalar"
+    """ for j, x in enumerate(r, 1):
+        if j == len(r): # FIXME seems weird
+            f_result_value = f_result.eval_univariate(x)
+        f_result: polynomial = f_result.eval_i(x, j) """
+    f_result_value = f.evaluate(r)
     # 3. Run sumcheck protocol for each adjacent layers, NOTE: sumcheck_r
     sumcheck_proof, sumcheck_r = prove_sumcheck(g=f, v=circuit.k_i(next_layer_num), transcript=transcript) 
+    # FIXME: seems to be an extra sumcheck_r
 
     # 4. Reduce multiple polynomial p(y, +1), p(y, 0) to p'() univariate polynomials and q(y, +1), q(y, 0) to q'() for verifier
     next_p: polynomial = get_ext(circuit.p_i[next_layer_num], circuit.k_i(next_layer_num))
     next_q: polynomial = get_ext(circuit.q_i[next_layer_num], circuit.k_i(next_layer_num))
-    p_k_plus_one_reduced: list[Scalar] = reduce_multiple_polynomial(sumcheck_r + [one], sumcheck_r + [zero], next_p)
-    q_k_plus_one_reduced: list[Scalar] = reduce_multiple_polynomial(sumcheck_r + [one], sumcheck_r + [zero], next_q)
-    # TODO replace this with merlin transcript
-    r_k_star: Scalar = Scalar(sum(list(map(lambda x : int(x), sumcheck_proof[len(sumcheck_proof) - 1])))) # FIXME: sum in this line should be hash
-    r_k_plus_one: list[Scalar] = ell(sumcheck_r + [one], sumcheck_r + [zero], r_k_star, circuit.k_i(next_layer_num)) # r_i+1 = l(r*), m_i+1 = q(r*)
+    partial_sumcheck_r = sumcheck_r[:circuit.k_i(next_layer_num)-1]
+    p_k_plus_one_reduced: list[Scalar] = reduce_multiple_polynomial(partial_sumcheck_r + [zero], partial_sumcheck_r + [one], next_p) # FIXMEte
+    q_k_plus_one_reduced: list[Scalar] = reduce_multiple_polynomial(partial_sumcheck_r + [zero], partial_sumcheck_r + [one], next_q)
 
+    # r_k_plus_one = l(r_k_star). ell is l in latex
+    r_k_star: Scalar = append_squeeze(transcript, sumcheck_proof[len(sumcheck_proof) - 1])
+    r_k_plus_one: list[Scalar] = ell(partial_sumcheck_r + [zero], partial_sumcheck_r + [one], r_k_star, circuit.k_i(next_layer_num)) # r_i+1 = l(r*), m_i+1 = q(r*)
+    
+    # TEST
+    p_q_plus_one_dict: dict[str, Scalar] = {
+        "p_k_plus_one_one": eval_univariate(p_k_plus_one_reduced, one), 
+        "p_k_plus_one_zero": eval_univariate(p_k_plus_one_reduced, zero), 
+        "q_k_plus_one_one": eval_univariate(q_k_plus_one_reduced, one), 
+        "q_k_plus_one_zero": eval_univariate(q_k_plus_one_reduced, zero)
+    }
+    verify_sumcheck(claim=f_result_value, proof=sumcheck_proof, r=sumcheck_r, v=circuit.k_i(next_layer_num), transcript=transcript, config="FRACTIONAL_GKR", p_q_plus_one_dict=p_q_plus_one_dict)
+    
+    
     return sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced
 
-def verify_layer(m: Scalar, sumcheck_proof: list[list[Scalar]], sumcheck_r: list[Scalar], k: int, r_k_star: Scalar, p_k_plus_one_reduced: list[Scalar], q_k_plus_one_reduced: list[Scalar]) -> tuple[bool, Scalar|None]:
+def verify_layer(
+        m: Scalar, 
+        sumcheck_proof: list[list[Scalar]], 
+        sumcheck_r: list[Scalar], 
+        k: int, 
+        r_k_star: Scalar, 
+        p_k_plus_one_reduced: list[Scalar], 
+        q_k_plus_one_reduced: list[Scalar], 
+        transcript: Transcript
+    ) -> tuple[bool, Scalar|None]:
     """
     params:
     m: claimed value of f(r) at the current layer
@@ -233,7 +276,7 @@ def verify_layer(m: Scalar, sumcheck_proof: list[list[Scalar]], sumcheck_r: list
         "q_k_plus_one_one": eval_univariate(q_k_plus_one_reduced, one), 
         "q_k_plus_one_zero": eval_univariate(q_k_plus_one_reduced, zero)
     }
-    valid = verify_sumcheck(claim=m, proof=sumcheck_proof, r=sumcheck_r, v=k, config="FRACTIONAL_GKR", p_q_plus_one_dict=p_q_plus_one_dict)
+    valid = verify_sumcheck(claim=m, proof=sumcheck_proof, r=sumcheck_r, v=k, transcript=transcript, config="FRACTIONAL_GKR", p_q_plus_one_dict=p_q_plus_one_dict)
     
     if not valid:
         return False, None
@@ -261,7 +304,7 @@ def prove(circuit: Circuit):
          f_value, 
          p_k_plus_one_reduced, 
          q_k_plus_one_reduced
-         ) = prove_layer(circuit, current_layer_num, proof.z[current_layer_num])
+         ) = prove_layer(circuit, current_layer_num, proof.z[current_layer_num], transcript)
         proof.sumcheck_proofs.append(sumcheck_proof)
         proof.sumcheck_rs.append(sumcheck_r)
         proof.r_stars.append(r_k_star)
@@ -276,6 +319,8 @@ def prove(circuit: Circuit):
     return proof
 
 def verify(proof: Proof):
+    transcript = Transcript(b"fractional_gkr_please_pass_verification_QAQ")
+    
     # V picks a random r0 ∈ Fk0 and lets m0 ← ˜D(r0). The remainder of the protocol is devoted to confirming that m0 = ˜W0(r0). 
     m: list[Scalar] = [Scalar.zero()]*proof.d
     m[0] = eval_expansion(proof.D, proof.z[0])
@@ -288,13 +333,15 @@ def verify(proof: Proof):
             current_layer_num,
             proof.r_stars[current_layer_num],
             proof.p_k_plus_one_reduceds[current_layer_num], 
-            proof.q_k_plus_one_reduceds[current_layer_num]
+            proof.q_k_plus_one_reduceds[current_layer_num],
+            transcript
         )
-        if len(out) == 2 and out[1] is not None:
+        if len(out) == 2:
             valid = out[0]
             if not valid:
                 return False
-            m[current_layer_num + 1] = out[1]
+            if out[1]:
+                m[current_layer_num + 1] = out[1]
         elif len(out) and not out:
             return False
     if m[proof.d - 1] != eval_expansion(proof.input_func, proof.z[proof.d - 1]):

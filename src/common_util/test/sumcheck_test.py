@@ -22,9 +22,6 @@ def test_polynomial():
     poly = polynomial(terms=[monomial1]) # 5 * ((2 * x_1 + 1) * (3 * x_2 + 4) * (2 * x_3 + 2)) + 6
     return poly
 
-def test_polynomial_function(values):
-    x_1, x_2 , x_3 = values
-    return 5 * ((2 * x_1 + 1) * (3 * x_2 + 4) * (2 * x_3 + 2))
 
 def test_polynomial2():
     a = Scalar(2)
@@ -78,14 +75,6 @@ def W1Func(bitstring):
     return Scalar(1)
 
 class TestSumcheck(unittest.TestCase):
-    def test_prove_sumcheck(self):
-        transcript = Transcript(b"test_sumcheck")
-        try:
-            f = test_polynomial()
-            prove_sumcheck(f, 3, transcript, 1)
-        except Exception as e:
-            self.fail(e)
-    
     def test_t(self):
         def D_func(arr: list[Scalar]) -> Scalar:
             if arr == [Scalar.zero()]:
@@ -96,38 +85,14 @@ class TestSumcheck(unittest.TestCase):
                 raise ValueError("Invalid input")
         print(get_multi_ext(D_func, 1))
 
+    def test_prove_sumcheck(self):
+        transcript = Transcript(b"test_sumcheck")
+        f = test_polynomial2()
+        prove_sumcheck(f, transcript)
+
     def test_verify_sumcheck(self):
         transcript = Transcript(b"test_sumcheck")
-        try:
-            v = 2
-
-            # calculate g with all x_i evaluated across all possible assignments
-            claim = Scalar.zero()
-            f = test_polynomial2()
-
-            assignments = generate_binary(v)
-            for assignment in assignments:
-                # Note: test_polynomial_function2 
-                multi_expansion = get_multi_ext(test_polynomial_function2, v) 
-                claim += eval_expansion(multi_expansion, assignment)
-            
-            """  
-            # or you can do this
-            for j, x in enumerate(sumcheck_r, 1):
-                if j == len(sumcheck_r):
-                    f_result_value = f_result.eval_univariate(x)
-                f_result: polynomial = f_result.eval_i(x, j)
-            """
-
-            proof, r = prove_sumcheck(f, v, transcript, 0)
-            transcript2 = Transcript(b"test_sumcheck")
-            self.assertTrue(verify_sumcheck(claim, proof, r, v, transcript2, config="DEFAULT", g=f), "Verification failed")
-        except Exception as e:
-            self.fail(e)
-
-    def test_prove_sumcheck_start_idx(self):
-        transcript = Transcript(b"test_sumcheck")
-        v = 2
         f = test_polynomial2()
-        # start from x_3
-        prove_sumcheck(f, v, transcript, 1)
+        proof = prove_sumcheck(f, transcript)        
+        transcript2 = Transcript(b"test_sumcheck")
+        self.assertTrue(verify_sumcheck(proof, transcript2, f), "Verification failed")

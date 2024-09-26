@@ -2,11 +2,11 @@
 from src.common_util.curve import Scalar
 from typing import Callable
 from src.common_util.util import length_expansion
-
+from typing import Optional
 class term:
     def __init__(self, coeff: Scalar, i: int, const: Scalar) -> None:
         self.coeff = coeff
-        if i < 0:
+        if i < 1:
             raise ValueError("i should be greater than 0")
         self.x_i = i
         self.const = const
@@ -119,7 +119,7 @@ class monomial:
 
 class polynomial:
     def __init__(self, terms: list[monomial], c=Scalar.zero()) -> None:
-        self.terms = terms
+        self.terms: list[monomial] = terms
         self.constant = c
 
     def __add__(self, other):
@@ -267,8 +267,7 @@ class polynomial:
         res = UnivariateExpansion([Scalar.zero()], 0)
         for t in self.terms:
             res += t.get_expansion()
-        return res
-    
+        return res    
     def get_multi_expansion(self, v: int) -> 'MultivariateExpansion':
         mexp = const2mexp(self.constant, v)
         for mono in self.terms:
@@ -313,6 +312,60 @@ class polynomial:
         poly = polynomial(new_terms_poly, new_constant).apply_all()
         return poly
 
+    def evaluate(self, *args: list[Scalar]):
+        """
+        Evaluate the polynomial at given point(s).
+        
+        :param args: Either a single Scalar for univariate polynomials,
+                     or a list of Scalars for multivariate polynomials.
+        :return: The result of the polynomial evaluation.
+        """
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            args = args[0]
+
+        # Find the highest x_i in the polynomial
+        max_x_i = max((term.x_i for mono in self.terms for term in mono.terms), default=0)
+
+        if len(args) < max_x_i:
+            raise ValueError(f"Not enough arguments provided. Expected at least {max_x_i}.")
+        elif len(args) > max_x_i:
+            print(f"Warning: {len(args) - max_x_i} extra argument(s) provided and will be ignored.")
+
+        result = self.constant
+        for mono in self.terms:
+            term_result = mono.coeff
+            for term in mono.terms:
+                term_result *= term.coeff * args[term.x_i - 1] + term.const
+            result += term_result
+        return result
+
+    def evaluate(self, *args: list[Scalar]):
+        """
+        Evaluate the polynomial at given point(s).
+        
+        :param args: Either a single Scalar for univariate polynomials,
+                     or a list of Scalars for multivariate polynomials.
+        :return: The result of the polynomial evaluation.
+        """
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            args = args[0]
+
+        # Find the highest x_i in the polynomial
+        max_x_i = max((term.x_i for mono in self.terms for term in mono.terms), default=0)
+
+        if len(args) < max_x_i:
+            raise ValueError(f"Not enough arguments provided. Expected at least {max_x_i}.")
+        elif len(args) > max_x_i:
+            print(f"Warning: {len(args) - max_x_i} extra argument(s) provided and will be ignored.")
+
+        result = self.constant
+        for mono in self.terms:
+            term_result = mono.coeff
+            for term in mono.terms:
+                term_result *= term.coeff * args[term.x_i - 1] + term.const
+            result += term_result
+        return result
+
     def __str__(self):
         terms_str = " + ".join([str(term) for term in self.terms])
         return f"{terms_str} + {self.constant}"
@@ -331,6 +384,44 @@ class polynomial:
         if self.constant != value.constant:
             return False
         return True
+
+def evaluate_indices(g: polynomial, start_index: int, end_index: int, args: Optional[list[Scalar]] = None) -> polynomial:
+    """  
+    Evaluate the polynomial g by fixing variables from start_index to end_index (inclusive). 
+    If args is not provided, the function will generate all possible assignments for the variables to be fixed.
+    
+    params:
+    g: the polynomial to evaluate
+    start_index: the starting index of variables to fix (1-indexed)
+    end_index: the ending index of variables to fix (1-indexed)
+    args: the values of variables to fix, if not provided, the function will generate all possible assignments
+
+    returns:
+    g_j: the resulting polynomial with variables outside the range [start_index, end_index] remaining unfixed
+    """
+    assert start_index <= end_index
+    assert end_index <= g.num_var()
+    g_j = polynomial([])
+
+    # Calculate the number of variables to fix
+    num_vars_to_fix = end_index - start_index + 1
+
+    if args is None:
+        # Generate all possible assignments for the variables to be fixed
+        assignments = generate_binary(num_vars_to_fix)
+    else:
+        assert len(args) == num_vars_to_fix
+        assignments = [args] # only one set of assignment
+
+    for assignment in assignments:
+        g_j_sub = polynomial(g.terms[:], g.constant)
+        
+        # Loop through every bit of the assignment
+        for i, x_i in enumerate(assignment):
+            idx = start_index + i  # index begins from start_index
+            g_j_sub = g_j_sub.eval_i(x_i, idx)
+        g_j += g_j_sub
+    return g_j
 
 class UnivariateExpansion:
     def __init__(self, coeffs: list[Scalar], deg: int) -> None:
@@ -487,11 +578,15 @@ def eval_ext(f: Callable[[list[Scalar]], Scalar], r: list[Scalar]) -> Scalar:
 
 def eval_expansion(f: list[list[Scalar]], r: list[Scalar]) -> Scalar:
     """ 
-    Evaluate multivariate polynomial expansion at point r 
+    Evaluate multivariate polynomial expansion at point r
     input:  [30, 1, 1], [40, 1, 0], [15, 0, 1], [26, 0, 0]
         representing 30 x1 * x2 + 40 x1 + 15 x2 + 26
-    
-    TODO add input output example
+
+    Usage:
+    multi_expansion = get_multi_ext(test_polynomial_function2, v) 
+    claim += eval_expansion(multi_expansion, assignment)
+
+
     """
     assert (len(r) + 1 == len(f[0]))
     res = Scalar.zero()
@@ -510,8 +605,11 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
     Return expansion of multivariate polynomial
     
     Parameters:
-    input: f()=5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
+    input: 
+        f()=5 * ((2 * x_1 + 1) * (3 * x_2 + 4)) + 6
         this input expands to 30 x1 * x2 + 40 x1 + 15 x2 + 26
+
+        v: numbers of bit in w
     output:  [30, 1, 1], [40, 1, 0], [15, 0, 1], [26, 0, 0]
     
     Note: 
@@ -563,6 +661,8 @@ def get_multi_ext(f: Callable[[list[Scalar]], Scalar], v: int) -> list[list[Scal
 
 def get_ext(f: Callable[[list[Scalar]], Scalar], v: int, last_element=None) -> polynomial:
     """  
+    get multilinear extension of f
+    
     params:
     f: function to evaluate
     v: numbers of bit in w

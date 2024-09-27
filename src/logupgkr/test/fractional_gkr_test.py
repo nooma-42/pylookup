@@ -358,6 +358,27 @@ class TestLogUPGKR(unittest.TestCase):
                 print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test1_a)}")
         assert fraction_sum == Scalar(0)
 
+    def test_reduce_multiple_polynomial(self):
+        """  
+        proof argument zero knowledge 4.5.2 
+        """
+        term1 = term(coeff=Scalar(3), i=1, const=Scalar(0))  # 3 * x_1
+        term2 = term(coeff=Scalar(1), i=2, const=Scalar(0))  # x_2
+        term3 = term(coeff=Scalar(2), i=2, const=Scalar(0))  # 3 * x_2
+        
+        monomial1 = monomial(coeff=Scalar(1), terms=[term1, term2])  # 3 * x_1 * x_2
+        monomial2 = monomial(coeff=Scalar(1), terms=[term3])  # 3 * x_2
+        w = polynomial(terms=[monomial1, monomial2], c=Scalar(0))
+        b = [Scalar(2), Scalar(4)]
+        c = [Scalar(3), Scalar(2)]
+
+        l = reduce_multiple_polynomial(b, c, w)
+        l_one = eval_univariate(l, one)
+        l_zero = eval_univariate(l, zero)
+        
+        assert l_one == w.evaluate(c)
+        assert l_zero == w.evaluate(b)
+
     def test_prove_layer_0(self):
         circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
         transcript = Transcript(b"test_logupgkr_prove_layer")

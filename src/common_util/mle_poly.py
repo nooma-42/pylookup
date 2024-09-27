@@ -225,17 +225,6 @@ class polynomial:
                 highest = len(term.terms)
         return highest
     
-    def get_highest_index(self):
-        """  
-        x2 x3, the highest index is 3
-        """
-        highest = 0
-        for term in self.terms:
-            for t in term.terms:
-                if t.x_i > highest:
-                    highest = t.x_i
-        return highest
-    
     def get_all_coefficients(self) -> list[Scalar]:
         p = self.apply_all()
         exp = p.get_expansion()
@@ -315,7 +304,7 @@ def evaluate_indices(g: polynomial, start_index: int, end_index: int, args: Opti
     g_j: the resulting polynomial with variables outside the range [start_index, end_index] remaining unfixed
     """
     assert start_index <= end_index
-    assert end_index <= g.get_highest_index()
+    assert end_index <= g.num_var()
     g_j = polynomial([])
 
     # Calculate the number of variables to fix
@@ -418,9 +407,6 @@ def generate_binary(bit_count) -> list[list[Scalar]]:
 
 # univariate
 def eval_univariate(coeffs: list[Scalar], x: Scalar):
-    """  
-    Evaluate univariate polynomial at point x
-    """
     result = coeffs[0]
     for i in range(1, len(coeffs)):
         result *= x
@@ -653,3 +639,71 @@ def generate_combinations(length) -> list[list[Scalar]]:
             result.append(combination + [zero])
             result.append(combination + [one])
         return result
+    
+def reduce_multiple_polynomial(b: list[Scalar], c: list[Scalar], w: polynomial) -> list[Scalar]:
+    """  
+    Reduce multiple polynomial evaluation to one
+
+    params:
+    b, c: two points on hypercube
+    w: multilinear evaluation polynomial
+
+    Return:
+    w(l()): the restriction of W to l
+
+    Example:
+    b = (2, 4) c=(3, 2)
+    w = 3x1x2 + 2x2
+    l(0) = b, l(1) = c, t -> (t + 2, 4 - 2t)
+    the restriction of W to l is 3(t + 2)(4 - 2t) + 2(4 - 2t) = -6t^2 - 4t + 32
+    
+    Note: 
+    1. 4.5.2 in Proof Argument and Zero Knowledge by Justin Thaler
+    2. This implementation only consider 2 evaluations
+    """
+    assert(len(b) == len(c))
+    t = []
+    new_poly_terms = []
+    for b_i, c_i in zip(b, c):
+        new_const = b_i
+        gradient = c_i - b_i
+        t.append(term(gradient, 1, new_const))
+    
+    for mono in w.terms:
+        new_terms = []
+        for each in mono.terms:
+            new_term = t[each.x_i - 1] * each.coeff
+            new_term.const += each.const
+            new_terms.append(new_term)
+        new_poly_terms.append(monomial(mono.coeff, new_terms))
+
+    poly = polynomial(new_poly_terms, w.constant)
+    return poly.get_all_coefficients()
+
+def ell(p1: list[Scalar], p2: list[Scalar], t: Scalar) -> list[Scalar]:
+    """  
+    reduce verification at two points into verification at a single point
+
+    Params:
+    p1, p2: two points on hypercube
+    t: random input chosen by the verifier, this input to l and get next layer randomness. r_i+1 = l(r*)
+    
+    Returns:
+    r_i+1: randomness for next layer
+
+    Example:
+    p1 = b*, p2 = c*, t = r*
+    l(r*) = b* + (r*) * (c* - b*)
+
+    Note:
+    ell(p1, p2, t) = p1 + t * (p2 - p1), which represents the evaluation of a polynomial at the point ell(p1, p2, t) \
+        using the linear function l(x) = p1 + x * (p2 - p1), i.e. l(0) = p1 and l(1) = p2
+    """
+    consts = p1
+    output = [Scalar.zero()]*len(p2)
+    other_term = [Scalar.zero()]*len(p2)
+    for i in range(len(p2)):
+        other_term[i] = p2[i] - consts[i]
+    for i in range(len(p2)):
+        output[i] = consts[i] + t*other_term[i]
+    return output

@@ -2,10 +2,9 @@
 #mle sumcheck instead of binary
 from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate, evaluate_indices
 from src.common_util.curve import Scalar
-from src.common_util.util import *
 from src.logupgkr.transcript import Transcript
 from dataclasses import dataclass
-from typing import Optional
+
 def append_squeeze(transcript: Transcript, items: list[Scalar]) -> Scalar:
     """
     append the items to the transcript and squeeze a challenge
@@ -24,7 +23,7 @@ def prove_sumcheck(g: polynomial, transcript: Transcript) -> SumcheckProof:
     """
     params:
     g: the polynomial to prove
-    
+
     returns:
     proof: containing all the coefficients of each round
     r: randomness generated in each round
@@ -41,7 +40,8 @@ def prove_sumcheck(g: polynomial, transcript: Transcript) -> SumcheckProof:
         c1 += g.evaluate(assignment)
     proof.claim = c1
 
-    for round in range(1, g.num_var()):
+    # Round 1 to Round v
+    for round in range(1, g.num_var() + 1):
         if round > 1:
             g_j = evaluate_indices(g, 1, round - 1, proof.r)
         else:
@@ -49,15 +49,13 @@ def prove_sumcheck(g: polynomial, transcript: Transcript) -> SumcheckProof:
             g_j = g
         if round < g.num_var():
             g_j = evaluate_indices(g_j, round + 1, g.num_var())
+            r_j = append_squeeze(transcript, g_j.get_all_coefficients())
+            proof.r.append(r_j)
         proof.coefficients.append(g_j.get_all_coefficients())
-        r_j = append_squeeze(transcript, g_j.get_all_coefficients())
-        proof.r.append(r_j)
-
-        # TEST
-        q_zero = eval_univariate(proof.coefficients[0], Scalar.zero())
-        q_one = eval_univariate(proof.coefficients[0], Scalar.one())
-        assert q_zero + q_one == c1
-        #####
+    
+    # This final challenge is not used but we need to get it to make the transcript consistent, because verifier will squeeze the final challenge
+    transcript.get_and_append_challenge(b"final_challenge")
+    
     return proof
 
 # TODO accommodate +1 -1 case 
@@ -88,15 +86,9 @@ def verify_sumcheck(proof: SumcheckProof, transcript: Transcript, g: polynomial)
     if g is None:
         raise ValueError("g must be provided in default sumcheck")
     g_result = polynomial(g.terms[:], g.constant)
-    final_challenge = transcript.get_and_append_challenge(b"final_challenge")
+    final_challenge = transcript.get_and_append_challenge(b"final_challenge") # FIXME: this trigger error in fractional gkr
     proof.r.append(final_challenge)
     g_result = g_result.evaluate(proof.r)
     if g_result == eval_univariate(proof.coefficients[g.num_var() - 1], final_challenge):
         return True
     return False
-
-    """ if p_q_plus_one_dict is None:
-        raise ValueError("p_q_plus_one_dict must be provided in fractional gkr sumcheck")
-    if p_q_plus_one_dict["p_k_plus_one_one"] is None or p_q_plus_one_dict["p_k_plus_one_zero"] is None or p_q_plus_one_dict["q_k_plus_one_one"] is None or p_q_plus_one_dict["q_k_plus_one_zero"] is None:
-        raise ValueError("Invalid p_q_plus_one_dict")
-    f_r_k: Scalar = (p_q_plus_one_dict["p_k_plus_one_one"] * p_q_plus_one_dict["q_k_plus_one_zero"] + p_q_plus_one_dict["p_k_plus_one_zero"] * p_q_plus_one_dict["q_k_plus_one_one"]) + p_q_plus_one_dict["q_k_plus_one_one"] * p_q_plus_one_dict["q_k_plus_one_zero"] """

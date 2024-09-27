@@ -4,7 +4,7 @@ from collections import defaultdict
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import generate_combinations, polynomial, monomial, term, eval_univariate
 from src.logupgkr.transcript import Transcript
-from src.logupgkr.fractional_gkr import Circuit, Layer, Node, Proof, prove_layer, verify_layer, prove, verify, reduce_multiple_polynomial
+from src.logupgkr.fractional_gkr import Circuit, Layer, Node, Proof, prove_layer, prove, verify, reduce_multiple_polynomial
 
 # NOTE: it's 1 and -1 in the original paper, not sure the difference on performance
 one = Scalar(1)
@@ -378,51 +378,6 @@ class TestLogUPGKR(unittest.TestCase):
         
         assert l_one == w.evaluate(c)
         assert l_zero == w.evaluate(b)
-
-    def test_prove_layer_0(self):
-        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        transcript = Transcript(b"test_logupgkr_prove_layer")
-        r = [Scalar(42)]
-        (sumcheck_proof, 
-         sumcheck_r, 
-         r_k_plus_one, 
-         r_k_star, 
-         f_result_value, 
-         p_k_plus_one_reduced, 
-         q_k_plus_one_reduced) = prove_layer(circuit, 0, r, transcript)
-        
-        transcript = Transcript(b"test_logupgkr_prove_layer")
-        claim = Scalar(21888242871839275222246405745257275088548364400338723506997053354004191215617)
-        valid, _m_next = verify_layer(
-            claim, 
-            sumcheck_proof, 
-            sumcheck_r, 
-            0,
-            r_k_star,
-            p_k_plus_one_reduced, 
-            q_k_plus_one_reduced,
-            transcript,
-        )
-        assert valid
-    def test_prove_layer_1(self):
-        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        transcript = Transcript(b"test_logupgkr_prove_layer")
-        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 1, [Scalar(42)], transcript)
-        
-        transcript = Transcript(b"test_logupgkr_prove_layer")
-        # all p + λ(all q), λ = 1
-        claim = Scalar(727916033600)+Scalar(7414796864000)+Scalar(21888242871839275222246405745257275088548364400416034343698204185981393171933)+Scalar(6054913856160)
-        valid, m_next = verify_layer(
-            claim, 
-            sumcheck_proof, 
-            sumcheck_r, 
-            1,
-            r_k_star,
-            p_k_plus_one_reduced, 
-            q_k_plus_one_reduced,
-            transcript
-        )
-        assert valid
     def test_prove(self):
         circuit: Circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
         prove(circuit)

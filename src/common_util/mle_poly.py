@@ -251,6 +251,17 @@ class polynomial:
                 highest = len(term.terms)
         return highest
     
+    def get_highest_index(self):
+        """  
+        x2 x3, the highest index is 3
+        """
+        highest = 0
+        for term in self.terms:
+            for t in term.terms:
+                if t.x_i > highest:
+                    highest = t.x_i
+        return highest
+
     def get_all_coefficients(self) -> list[Scalar]:
         p = self.apply_all()
         exp = p.get_expansion()
@@ -400,7 +411,7 @@ def evaluate_indices(g: polynomial, start_index: int, end_index: int, args: Opti
     g_j: the resulting polynomial with variables outside the range [start_index, end_index] remaining unfixed
     """
     assert start_index <= end_index
-    assert end_index <= g.num_var()
+    assert end_index <= g.get_highest_index()
     g_j = polynomial([])
 
     # Calculate the number of variables to fix

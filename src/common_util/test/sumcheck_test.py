@@ -38,6 +38,15 @@ def test_polynomial2():
     poly = polynomial(terms=[monomial1]) # 5 * ((2 * x_1 + 1) * (3 * x_2 + 4))
     return poly
 
+def test_polynomial3():
+    a = Scalar(2)
+    d = Scalar(5)
+    e = Scalar(1)
+    term1 = term(coeff=a, i=1, const=e)  # (2 * x_1 + 1)
+    monomial1 = monomial(coeff=d, terms=[term1])  # 5 * (2 * x_1 + 1)
+    poly = polynomial(terms=[monomial1]) # 5 * (2 * x_1 + 1)
+    return poly
+
 def test_polynomial_function2(values):
     x_1, x_2  = values
     return 5 * (2 * x_1 + 1) * (3 * x_2 + 4)
@@ -92,7 +101,21 @@ class TestSumcheck(unittest.TestCase):
 
     def test_verify_sumcheck(self):
         transcript = Transcript(b"test_sumcheck")
+        f = test_polynomial()
+        proof = prove_sumcheck(f, transcript)        
+        transcript2 = Transcript(b"test_sumcheck")
+        self.assertTrue(verify_sumcheck(proof, transcript2, f), "Verification failed")
+
+    def test_verify_sumcheck2(self):
+        transcript = Transcript(b"test_sumcheck")
         f = test_polynomial2()
+        proof = prove_sumcheck(f, transcript)        
+        transcript2 = Transcript(b"test_sumcheck")
+        self.assertTrue(verify_sumcheck(proof, transcript2, f), "Verification failed")
+
+    def test_verify_sumcheck3(self):
+        transcript = Transcript(b"test_sumcheck")
+        f = test_polynomial3()
         proof = prove_sumcheck(f, transcript)        
         transcript2 = Transcript(b"test_sumcheck")
         self.assertTrue(verify_sumcheck(proof, transcript2, f), "Verification failed")

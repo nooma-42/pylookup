@@ -2,8 +2,9 @@ import unittest
 from typing import Callable
 from collections import defaultdict
 from src.common_util.curve import Scalar
-from src.common_util.mle_poly import generate_combinations
-from src.logupgkr.fractional_gkr import Circuit, Layer, Node, Proof, prove_layer, verify_layer, prove, verify
+from src.common_util.mle_poly import generate_combinations, polynomial, monomial, term, eval_univariate
+from src.logupgkr.transcript import Transcript
+from src.logupgkr.fractional_gkr import Circuit, Layer, Node, Proof, prove_layer, prove, verify, reduce_multiple_polynomial
 
 # NOTE: it's 1 and -1 in the original paper, not sure the difference on performance
 one = Scalar(1)
@@ -45,6 +46,7 @@ test1_w = [test1_w1]
 # Test2
 test2_n = 2 # 2^n rows
 test2_k = 2 # 2^k - 1 columns
+
 def test2_m(X: list[Scalar]) -> Scalar:
     result = {tuple([zero, zero]): Scalar(7),
               tuple([zero, one]): Scalar(3),
@@ -300,6 +302,9 @@ def init_test_circuit(test_n, test_k, test_w, test_a) -> Circuit:
         """  
         params: 
         index_and_layers: {layer_index: [(prefix, p, q), (prefix, p, q), ...]}
+
+        return:
+        i_functions: {layer_index: layer_function}
         """
         if config not in ["p", "q"]:
             raise ValueError("Invalid config")
@@ -352,37 +357,31 @@ class TestLogUPGKR(unittest.TestCase):
                 fraction_sum = fraction_sum + p(X, Y, test2_m) / q(X, Y, test2_t, test2_w, test1_a)
                 print(f"p: {p(X, Y, test2_m)},  q: {q(X, Y, test2_t, test2_w, test1_a)}")
         assert fraction_sum == Scalar(0)
-    def test_prove_layer_0(self):
-        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 0, [])
-        claim = Scalar(0)+Scalar(44895956272445315082240000)
-        verify_layer(
-            claim, 
-            sumcheck_proof, 
-            sumcheck_r, 
-            0,
-            r_k_star,
-            p_k_plus_one_reduced, 
-            q_k_plus_one_reduced
-        )
-    def test_prove_layer_1(self):
-        circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
-        sumcheck_proof, sumcheck_r, r_k_plus_one, r_k_star, f_result_value, p_k_plus_one_reduced, q_k_plus_one_reduced = prove_layer(circuit, 1, [Scalar(42)])
-        # all p + λ(all q), λ = 1
-        claim = Scalar(727916033600)+Scalar(7414796864000)+Scalar(21888242871839275222246405745257275088548364400416034343698204185981393171933)+Scalar(6054913856160)
-        verify_layer(
-            claim, 
-            sumcheck_proof, 
-            sumcheck_r, 
-            1,
-            r_k_star,
-            p_k_plus_one_reduced, 
-            q_k_plus_one_reduced
-        )
+
+    def test_reduce_multiple_polynomial(self):
+        """  
+        proof argument zero knowledge 4.5.2 
+        """
+        term1 = term(coeff=Scalar(3), i=1, const=Scalar(0))  # 3 * x_1
+        term2 = term(coeff=Scalar(1), i=2, const=Scalar(0))  # x_2
+        term3 = term(coeff=Scalar(2), i=2, const=Scalar(0))  # 3 * x_2
+        
+        monomial1 = monomial(coeff=Scalar(1), terms=[term1, term2])  # 3 * x_1 * x_2
+        monomial2 = monomial(coeff=Scalar(1), terms=[term3])  # 3 * x_2
+        w = polynomial(terms=[monomial1, monomial2], c=Scalar(0))
+        b = [Scalar(2), Scalar(4)]
+        c = [Scalar(3), Scalar(2)]
+
+        l = reduce_multiple_polynomial(b, c, w)
+        l_one = eval_univariate(l, one)
+        l_zero = eval_univariate(l, zero)
+        
+        assert l_one == w.evaluate(c)
+        assert l_zero == w.evaluate(b)
     def test_prove(self):
         circuit: Circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
         prove(circuit)
     def test_verify(self):
         circuit: Circuit = init_test_circuit(test2_n, test2_k, test2_w, test1_a)
         proof: Proof = prove(circuit)
-        verify(proof)
+        assert verify(proof)

@@ -350,32 +350,17 @@ class polynomial:
             result += term_result
         return result
 
-    def evaluate(self, *args: list[Scalar]):
+    def num_var(self) -> int:
         """
-        Evaluate the polynomial at given point(s).
+        Get the number of variables in the polynomial.
         
-        :param args: Either a single Scalar for univariate polynomials,
-                     or a list of Scalars for multivariate polynomials.
-        :return: The result of the polynomial evaluation.
+        :return: The number of unique variables in the polynomial.
         """
-        if len(args) == 1 and isinstance(args[0], (list, tuple)):
-            args = args[0]
-
-        # Find the highest x_i in the polynomial
-        max_x_i = max((term.x_i for mono in self.terms for term in mono.terms), default=0)
-
-        if len(args) < max_x_i:
-            raise ValueError(f"Not enough arguments provided. Expected at least {max_x_i}.")
-        elif len(args) > max_x_i:
-            print(f"Warning: {len(args) - max_x_i} extra argument(s) provided and will be ignored.")
-
-        result = self.constant
+        variables = set()
         for mono in self.terms:
-            term_result = mono.coeff
             for term in mono.terms:
-                term_result *= term.coeff * args[term.x_i - 1] + term.const
-            result += term_result
-        return result
+                variables.add(term.x_i)
+        return len(variables)
 
     def __str__(self):
         terms_str = " + ".join([str(term) for term in self.terms])

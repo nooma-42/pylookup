@@ -19,7 +19,7 @@ class SumcheckProof:
     coefficients: list[list[Scalar]] # containing all the coefficients of each round
     r: list[Scalar] # hash of the coefficients of each round as a randomness
 
-def prove_sumcheck(g: polynomial, transcript: Transcript) -> SumcheckProof:
+def prove_sumcheck_transcript(g: polynomial, transcript: Transcript) -> SumcheckProof:
     """
     params:
     g: the polynomial to prove
@@ -59,7 +59,7 @@ def prove_sumcheck(g: polynomial, transcript: Transcript) -> SumcheckProof:
     return proof
 
 # TODO accommodate +1 -1 case 
-def verify_sumcheck(proof: SumcheckProof, transcript: Transcript, g: polynomial) -> bool:
+def verify_sumcheck_transcript(proof: SumcheckProof, transcript: Transcript, g: polynomial) -> bool:
     """  
     params:
     proof: SumcheckProof

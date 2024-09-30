@@ -4,10 +4,10 @@ from typing import Callable
 from dataclasses import dataclass
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import (
-    get_multi_ext, get_ext,
+    get_ext,
     monomial, term, polynomial,
 )
-from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck, SumcheckProof
+from src.common_util.sumcheck import prove_sumcheck_transcript, verify_sumcheck_transcript, SumcheckProof
 from src.logupgkr.transcript import Transcript
 
 one = Scalar(1)
@@ -192,7 +192,7 @@ def prove_layer(
     input_function = polynomial(f.terms, f.constant) # TODO: remove this after making sure the sumcheck don't mutate
     
     # 2. P claims that Σb, c∈ {0, 1}k_i+1 f_r_i(i)(b, c) = m_i by running sumcheck protocol for each adjacent layers
-    sumcheck_proof = prove_sumcheck(g=f, transcript=transcript) 
+    sumcheck_proof = prove_sumcheck_transcript(g=f, transcript=transcript) 
     
     return sumcheck_proof, input_function
 
@@ -212,7 +212,7 @@ def verify(proof: Proof):
     transcript = Transcript(b"fractional_gkr_please_pass_verification_QAQ")
     
     for current_layer_num in range(proof.d - 1):
-        valid = verify_sumcheck(proof=proof.sumcheck_proofs[current_layer_num], transcript=transcript, g=proof.input_functions[current_layer_num])
+        valid = verify_sumcheck_transcript(proof=proof.sumcheck_proofs[current_layer_num], transcript=transcript, g=proof.input_functions[current_layer_num])
         if not valid:
             return False
     return True

@@ -110,6 +110,12 @@ class monomial:
             for t in self.terms[1:]:
                 res *= t
             return res
+        
+    def get_multi_expansion(self, v: int) -> 'MultivariateExpansion':
+        mexp = const2mexp(self.coeff, v)
+        for term in self.terms:
+            mexp *= term
+        return mexp
 
 class polynomial:
     def __init__(self, terms: list[monomial], c=Scalar.zero()) -> None:
@@ -117,37 +123,39 @@ class polynomial:
         self.constant = c
 
     def __add__(self, other):
-        return polynomial(self.terms + other.terms, self.constant + other.constant)
-    
+        if isinstance(other, polynomial):
+            return polynomial(self.terms + other.terms, self.constant + other.constant)
+        else:
+            assert isinstance(other, Scalar)
+            return polynomial(self.terms, self.constant + other)
+
     def __mul__(self, other):
-        new_terms = []
-        for a in self.terms:
+        if isinstance(other, polynomial):
+            new_terms = []
+            for a in self.terms:
+                for b in other.terms:
+                    new_terms.append(a * b)
+            for a in self.terms:
+                if other.constant != Scalar.zero():
+                    new_terms.append(monomial(a.coeff * other.constant, a.terms))
             for b in other.terms:
-                new_terms.append(a * b)
-        for a in self.terms:
-            if other.constant != Scalar.zero():
-                new_terms.append(monomial(a.coeff * other.constant, a.terms))
-        for b in other.terms:
-            if self.constant != Scalar.zero():
-                new_terms.append(monomial(b.coeff * self.constant, b.terms))
-        new_constant = self.constant * other.constant
-        return polynomial(new_terms, new_constant)
-    
-    def num_var(self) -> int:
-        """
-        Get the number of variables in the polynomial.
-        
-        :return: The number of unique variables in the polynomial.
-        """
-        variables = set()
-        for mono in self.terms:
-            for term in mono.terms:
-                variables.add(term.x_i)
-        return len(variables)
+                if self.constant != Scalar.zero():
+                    new_terms.append(monomial(b.coeff * self.constant, b.terms))
+            new_constant = self.constant * other.constant
+            return polynomial(new_terms, new_constant)
+        else:
+            assert isinstance(other, Scalar)
+            new_terms = []
+            for a in self.terms:
+                if other != Scalar.zero():
+                    new_terms.append(monomial(a.coeff * other, a.terms))
+            new_constant = self.constant * other
+            return polynomial(new_terms, new_constant)
 
     def eval_i(self, x_i: Scalar, i: int):
         """  
-        evaluate valuable index i with x_i
+        evaluate variable index i with x_i
+        i starts from 1
         i starts from 1
         """
         if i == 0:
@@ -173,6 +181,25 @@ class polynomial:
             else:
                 new_mono = monomial(result, new_terms)
                 new_terms_poly.append(new_mono)
+        poly = polynomial(new_terms_poly, new_constant).apply_all()
+        return poly
+
+    def eval(self, x: list[Scalar]):
+        poly = polynomial(self.terms[:], self.constant)
+        for i, x_i in enumerate(x):
+            poly = poly.eval_i(x_i, i+1)
+        return poly.constant
+
+    def shift(self, idx: int):
+        new_terms_poly = []
+        new_constant = self.constant
+        for mono in self.terms:
+            new_terms = []
+            new_coeff = mono.coeff
+            for t in mono.terms:
+                new_terms.append(term(t.coeff, t.x_i + idx, t.const))
+            new_mono = monomial(new_coeff, new_terms)
+            new_terms_poly.append(new_mono)
         poly = polynomial(new_terms_poly, new_constant).apply_all()
         return poly
 
@@ -252,7 +279,50 @@ class polynomial:
         res = UnivariateExpansion([Scalar.zero()], 0)
         for t in self.terms:
             res += t.get_expansion()
-        return res
+        return res    
+    def get_multi_expansion(self, v: int) -> 'MultivariateExpansion':
+        mexp = const2mexp(self.constant, v)
+        for mono in self.terms:
+            mexp += mono.get_multi_expansion(v)
+        return mexp
+
+    def quotient_single_term(self, value: Scalar, i: int):
+        '''
+        return the quotient of f/(x_i-value)
+        '''
+        new_terms_poly = []
+        new_constant = Scalar(0)
+        for mono in self.terms:
+            terms = mono.terms.copy()
+            coeff = mono.coeff
+            while True:
+                new_terms = []
+                this_coeff = coeff
+                next_coeff = coeff
+                has_x_i = False
+                for term in terms:
+                    if has_x_i:
+                        new_terms.append(term)
+                    else:
+                        if term.x_i == i:
+                            has_x_i = True
+                            this_coeff *= term.coeff
+                            next_coeff *= term.eval(value)
+                        else:
+                            new_terms.append(term)
+                if not has_x_i:
+                    break
+                if len(new_terms) == 0:
+                    new_constant += this_coeff
+                    break
+                else:
+                    new_mono = monomial(this_coeff, new_terms)
+                    new_terms_poly.append(new_mono)
+                    terms = new_terms
+                    coeff = next_coeff
+                
+        poly = polynomial(new_terms_poly, new_constant).apply_all()
+        return poly
 
     def evaluate(self, *args: list[Scalar]):
         """
@@ -280,6 +350,18 @@ class polynomial:
                 term_result *= term.coeff * args[term.x_i - 1] + term.const
             result += term_result
         return result
+
+    def num_var(self) -> int:
+        """
+        Get the number of variables in the polynomial.
+        
+        :return: The number of unique variables in the polynomial.
+        """
+        variables = set()
+        for mono in self.terms:
+            for term in mono.terms:
+                variables.add(term.x_i)
+        return len(variables)
 
     def __str__(self):
         terms_str = " + ".join([str(term) for term in self.terms])
@@ -471,6 +553,18 @@ def chi_w_from_k(w: list[Scalar], k: int) -> monomial:
     mono = monomial(Scalar.one(), prod)
     return mono
 
+# Similar to chi_w, but extend to w \notin {0, 1}^n
+def eq_mle(w: list[Scalar]):
+    prod = []
+    for i, w_i in enumerate(w):
+        prod.append(term(w_i*2-1, i+1, 1-w_i))
+    
+    mono = monomial(Scalar.one(), prod)
+    return mono
+
+def eq_mle_poly(w: list[Scalar]):
+    return polynomial([eq_mle(w)])
+
 def eval_ext(f: Callable[[list[Scalar]], Scalar], r: list[Scalar]) -> Scalar:
     w = generate_binary(len(r))
     acc = Scalar.zero()
@@ -634,6 +728,32 @@ def get_ext_from_k(f: Callable[[list[Scalar]], Scalar], v: int, k: int) -> polyn
         res.mult(f(w))
         ext_f.append(res)
     return polynomial(ext_f)
+
+def get_multi_poly_lagrange(values: list[Scalar], length: int) -> polynomial:
+    '''
+    get length-variate polynomial with multilinear lagrange basis
+    f = \sum_{w \in {0,1}^n} values[w] * chi_w(w)
+    '''
+    w_set = generate_binary(length)
+    assert(len(w_set) == len(values))
+    ext_f = []
+    for w, val in zip(w_set, values):
+        res = chi_w(w)
+        if val == Scalar.zero():
+            continue
+        res.mult(val)
+        ext_f.append(res)
+    poly = polynomial(ext_f)
+    return poly
+
+def get_single_term_poly(term: term) -> polynomial:
+    mono = monomial(Scalar(1), [term])
+    return polynomial([mono])
+
+def const2mexp(value: Scalar, v: int) -> MultivariateExpansion:
+    term = [Scalar(0) for _ in range(v+1)]
+    term[0] = value
+    return MultivariateExpansion([term], v)
 
 one = Scalar(1)
 zero = Scalar(0)

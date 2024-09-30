@@ -55,7 +55,7 @@ class Prover:
         # vanish = x^(n+1) - 1
         self.vanish = Polynomial([Scalar(-1)]+[Scalar(0)]*self.n+[Scalar(1)], Basis.MONOMIAL)
 
-    def prove(self, witness: list):
+    def prove(self, witness: list[int]):
         transcript = Transcript(b"plonk_plookup")
         # Round 1
         msg_1 = self.round_1(witness)
@@ -88,7 +88,7 @@ class Prover:
 
         return Proof(msg_1, msg_2, msg_3, msg_4, msg_5)
 
-    def round_1(self, witness: list[Scalar]) -> Message1:
+    def round_1(self, witness: list[int]) -> Message1:
         assert(len(witness) <= self.n)
         # pad witness to length n
         witness += [witness[-1]] * (self.n - len(witness))
@@ -100,7 +100,7 @@ class Prover:
         self.f_poly = Polynomial(self.f, Basis.LAGRANGE)
         self.t = list(map(Scalar, self.table))
         self.t_poly = Polynomial(self.t, Basis.LAGRANGE)
-        self.s = list(map(Scalar, self.sorted_by_table(witness, self.table)))
+        self.s = list(map(Scalar, Prover.sorted_by_table(witness, self.table)))
         self.h1 = Polynomial(self.s[:self.n+1], Basis.LAGRANGE)
         self.h2 = Polynomial(self.s[self.n:], Basis.LAGRANGE)
         self.f_comm = self.setup.commit_g1(self.f_poly)
@@ -146,8 +146,8 @@ class Prover:
         self.agg_g_witness_comm = self.setup.commit_g1(self.agg_g_witness)
         return Message5(self.agg_witness_comm, self.agg_g_witness_comm)
 
-    @classmethod
-    def sorted_by_table(self, witness: list[int], table: list[int]):
+    @staticmethod
+    def sorted_by_table(witness: list[int], table: list[int]):
         data = table + witness
         index = {}
         for i, t in enumerate(table):

@@ -1,6 +1,6 @@
-# plookup
+# Lasso
 
-A Python implementation of [plookup](https://eprint.iacr.org/2020/315.pdf) with kzg proof
+A Python implementation of [Lasso](https://eprint.iacr.org/2023/1216.pdf) with [multivariate kzg](https://eprint.iacr.org/2011/587.pdf) polynomial commitment scheme.
 
 ## Getting started
 
@@ -22,6 +22,6 @@ This will install all the dependencies in a virtualenv.
 
 Run command from the root of the repository:
 
-`poetry run python ./src/plookup/test.py`
+`poetry run python ./src/lasso/test.py`
 
 This will take you through the workflow of setup, proof generation, and verification.

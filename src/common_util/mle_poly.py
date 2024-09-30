@@ -156,6 +156,7 @@ class polynomial:
         """  
         evaluate variable index i with x_i
         i starts from 1
+        i starts from 1
         """
         if i == 0:
             raise ValueError("i should start from 1")
@@ -561,7 +562,6 @@ def eq_mle(w: list[Scalar]):
     mono = monomial(Scalar.one(), prod)
     return mono
 
-
 def eq_mle_poly(w: list[Scalar]):
     return polynomial([eq_mle(w)])
 
@@ -754,6 +754,7 @@ def const2mexp(value: Scalar, v: int) -> MultivariateExpansion:
     term = [Scalar(0) for _ in range(v+1)]
     term[0] = value
     return MultivariateExpansion([term], v)
+
 one = Scalar(1)
 zero = Scalar(0)
 

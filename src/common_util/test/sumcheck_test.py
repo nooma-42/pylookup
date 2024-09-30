@@ -1,5 +1,5 @@
 import unittest
-from src.common_util.sumcheck import prove_sumcheck, verify_sumcheck
+from src.common_util.sumcheck import prove_sumcheck_transcript, verify_sumcheck_transcript
 from src.common_util.curve import Scalar
 from src.common_util.mle_poly import (
     polynomial, term, monomial, 

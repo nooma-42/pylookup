@@ -1,6 +1,6 @@
 # Code modified from https://github.com/jeong0982/gkr
 #mle sumcheck instead of binary
-from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate, evaluate_indices
+from src.common_util.mle_poly import polynomial, generate_binary, eval_univariate, evaluate_indices, evaluate_indices
 from src.common_util.curve import Scalar
 from src.logupgkr.transcript import Transcript
 from dataclasses import dataclass

@@ -1,6 +1,8 @@
-Plookup is a Plonk-based lookup argument. In this article, we start from Plonk’s techniques and show that how Plookup applies the techniques to the lookup argument.
+# Plookup Introduction
 
-## Plonk’s proof of multiset equality
+Plookup is a Plonk-based lookup argument. In this article, we start from Plonk's techniques and show that how Plookup applies the techniques to the lookup argument.
+
+## Plonk's proof of multiset equality
 
 In the permutation argument of Plonk, they perform the multiset equality proof as follows:
 
@@ -12,32 +14,53 @@ $\prod_{i=1}^n (s_i + \gamma) = \prod_{i=1}^n (t_i + \gamma)$
 
 How do we use the multiset equality to prove lookup? That is, given a witness $f$ and table $t$, we want to prove that $f_i \in t, \forall i \le |f|$. 
 
-- Note: Plookup requires that $|f| = |t| - 1$ (denote this number as $n$), so when $|f| < |t| - 1$, we need to pad $|f|$ to length $|t|-1$. For example, given $t = [1,2,3,4,5,6,7,8]$ and $f = [4,8,7,6,3]$, we need to pad $f$ to length $7$. We achieve this by simply repeating the last element, i.e., $f = [4,8,7,6,3,3,3$].
+- Note: Plookup requires that $|f| = |t| - 1$ (denote this number as $n$), so when $|f| < |t| - 1$, we need to pad $|f|$ to length $|t|-1$. For example, given $t = [1,2,3,4,5,6,7,8]$ and $f = [4,8,7,6,3]$, we need to pad $f$ to length $7$. We achieve this by simply repeating the last element, i.e., $f = [4,8,7,6,3,3,3]$.
+
+The protocol doesn't specifically explain the reason for this requirement.
 
 First, we construct an array $s$, which is the sorted array of $f+t$ based on the order of $t$. For example, given $t = [1,2,3,4,5,6,7,8]$ and $f = [4,8,7,6,3,3,3]$, we have $s = [1,2,3,3,3,3,4,4,5,6,6,7,7,8,8]$. So $|s| = |f| + |t| = 2n+1$.
 
-The original Plookup paper states that they focus on the non-zero differece of each multiset. But I think that [this article](https://github.com/sec-bit/learning-zkp/blob/develop/plonk-intro-cn/7-plonk-lookup.md) has better insight, so our description follows that article. The prover proves the equality of these two multisets:
+The original Plookup paper states that they focus on the non-zero difference of each multiset. But I think that [this article](https://github.com/sec-bit/learning-zkp/blob/develop/plonk-intro-cn/7-plonk-lookup.md) has better insight, so our description follows that article. The prover proves the equality of these two multisets:
 
 - $\{(f_i, f_i)\} + \{(t_i, t_{i+1})\}$
 - $\{(s_i, s_{i+1})\}$
 
-If $f_i \subset t$ and $s$ is correctly generated, it’s easy to see that these two multipsets are equal. On the other hand, if these two multisets are equal, then we can categorize $(s_i, s_{i+1})$ into two multisets:
+Simply comparing whether the element sets of $s$ and $f$, $t$ are equal is not sufficient. For example, $t = \{1, 4, 8\}$ and $f = \{5, 5\}$. After merging and sorting, $s = \{1, 4, 5, 5, 8\}$. If we only look at the element sets, $\{1, 4, 5, 5, 8\}$ seems to include both $\{5, 5\}$ and $\{1, 4, 8\}$. But $5$ in $f$ is not in $t$.
+
+Plookup solves this problem by comparing transition pairs:
+The transition pairs in $s$ are $\{(1,4), (4,5), (5,5), (5,8)\}$.
+The valid transition pairs formed by $f$ and $t$ are $\{(5,5)\} + \{(1,4), (4,8)\} = \{(1,4), (4,8), (5,5)\}$.
+
+If $f_i \subset t$ and $s$ is correctly generated, it's easy to see that these two multisets are equal. On the other hand, if these two multisets are equal, then we can categorize $(s_i, s_{i+1})$ into two multisets:
 
 1. $\{(s_i, s_{i+1})\}$ where $s_i = s_{i+1}$
 2. $\{(s_i, s_{i+1})\}$ where $s_i \ne s_{i+1}$
 
-Since $t_i \ne t_{i+1}, \forall i \in [n]$, we must have the first multiset equals to ${(f_i, f_i)}$ and the second one equals to $\{(t_i, t_{i+1})\}$. Then it’s easy to prove that we must have $\forall i \in [n], \exists j \in [n+1], f_i = t_j$, and therefore $s$ is the sorted array of $f+t$ based on the order of $t$ (we left the proof as exercise).
+Since $t_i \ne t_{i+1}, \forall i \in [n]$, we must have the first multiset equals to ${(f_i, f_i)}$ and the second one equals to $\{(t_i, t_{i+1})\}$. Then it's easy to prove that we must have $\forall i \in [n], \exists j \in [n+1], f_i = t_j$, and therefore $s$ is the sorted array of $f+t$ based on the order of $t$ (we left the proof as exercise).
 
 Equivalently, the prover can prove the equality of these two multisets with random $\beta \in \mathbb{F}$ provided by the verifier:
+
+If two multisets A and B are equal, then applying the same random linear combination function $h(x, y) = x + \beta y$ (where $\beta$ is a randomly selected field element) to each of their elements should result in two new multisets A' and B' that are also equal (except with very small probability, according to the Schwartz-Zippel lemma).
+
+Applying $h$ to each tuple in set 1:
+For $(f_i, f_i)$, $h(f_i, f_i) = f_i + \beta f_i = (1 + \beta)f_i$
+For $(t_i, t_{i+1})$, $h(t_i, t_{i+1}) = t_i + \beta t_{i+1}$
+Transformed set 1': $\{(1 + \beta)f_i\} + \{t_i + \beta t_{i+1}\}$
+
+Applying $h$ to each tuple $(s_i, s_{i+1})$ in set 2:
+$h(s_i, s_{i+1}) = s_i + \beta s_{i+1}$
+Transformed set 2': $\{s_i + \beta s_{i+1}\}$
 
 - $\{(1+\beta) f_i\} + \{t_i + \beta t_{i+1}\}$
 - $\{s_i + \beta s_{i+1}\}$
 
-With another random $\gamma’ \in \mathbb{F}$ from the verifier, the prover can prove the multiset equality by proving:
+Note that the purpose here is to address how to transform the comparison of tuples $(x, y)$ (i.e., checking if multiset $\{(f_i, f_i)\} + \{(t_i, t_{i+1})\}$ equals $\{(s_i, s_{i+1})\}$) into a form that's easier to process with polynomials.
 
-- $\prod_{i=1}^{n} ((1+\beta) f_i + \gamma’) \prod_{i=1}^n (t_i + \beta t_{i+1} + \gamma’) = \prod_{i=1}^{2n} (s_i + \beta s_{i+1} + \gamma’)$
+With another random $\gamma' \in \mathbb{F}$ from the verifier, the prover can prove the multiset equality by proving:
 
-In Plookup paper, they use $\gamma’ = (1+\beta) \gamma$, so the proof becomes:
+- $\prod_{i=1}^{n} ((1+\beta) f_i + \gamma') \prod_{i=1}^n (t_i + \beta t_{i+1} + \gamma') = \prod_{i=1}^{2n} (s_i + \beta s_{i+1} + \gamma')$
+
+In Plookup paper, they use $\gamma' = (1+\beta) \gamma$, so the proof becomes:
 
 - $(1+\beta)^n \prod_{i=1}^{n} (f_i + \gamma) \prod_{i=1}^n (t_i + \beta t_{i+1} + (1+\beta) \gamma) = \prod_{i=1}^{2n} (s_i + \beta s_{i+1} + (1+\beta) \gamma)$
 
@@ -45,21 +68,71 @@ Let $h_1$ be the first $n+1$ elements of $s$, and $h_2$ be the last $n+1$ elemen
 
 - $\prod_{i=1}^{n} (h_{1_i} + \beta h_{1_{i+1}} + (1+\beta) \gamma) (h_{2_i} + \beta h_{2_{i+1}} + (1+\beta) \gamma)$
 
+Vector $h1$: Take the first $n+1$ elements of $s$, i.e., $h1 = (s_1, s_2, ..., s_{n+1})$.
+Vector $h2$: Take the last $n+1$ elements of $s$, i.e., $h2 = (s_{n+1}, s_{n+2}, ..., s_{2n+1})$.
+
+Here we split it into two halves, which will be explained later.
+
 ## Turn into Polynomial proof
 
-To prove the grand product, Plookup uses the techniques similar to Plonk. Let $a_i = (1+\beta) (f_i + \gamma) (t_i + \beta t_{i+1} + (1+\beta) \gamma)$, $b_i = (h_{1_i} + \beta h_{1_{i+1}} + (1+\beta) \gamma) (h_{2_i} + \beta h_{2_{i+1}} + (1+\beta) \gamma)$, and we want to prove that $\prod_{i=1}^n a_i = \prod_{i=1}^n b_i$. 
+To prove the grand product, Plookup uses the techniques similar to Plonk. Let $a_i = (1+\beta) (f_i + \gamma) (t_i + \beta t_{i+1} + (1+\beta) \gamma)$, $b_i = (h_{1_i} + \beta h_{1_{i+1}} + (1+\beta) \gamma) (h_{2_i} + \beta h_{2_{i+1}} + (1+\beta) \gamma)$, and we want to prove that $\prod_{i=1}^n a_i = \prod_{i=1}^n b_i$. This is just shortening the expressions.
 
 Let $Z_1 = 1, Z_{i+1} = (a_i/b_i) Z_i$, the prover wants prove that $Z_{n+1} = Z_1 = 1$, and $\{Z_i\}$ is properly generated. Also, the prover needs to prove that $h_{1_{n+1}} = h_{2_1}$.
+This holds because:
+
+$a1 * a2 * ... * an$ (numerator)
+$b1 * b2 * ... * bn$ (denominator)
+
+The division should equal 1, so $Z1 = 1$ and $Z$ is a cumulative product process.
 
 To prove that $Z_{i+1} = (a_i/b_i) Z_i$, we can prove that $Z_i a_i - Z_{i+1} b_i = 0, \forall i \in [n]$. In the Polynomial manner, it is to show that
 
 $(x-g^{n+1})(Z(x) (1+\beta) (f(x) + \gamma) (t(x) + \beta t(g \cdot x) + (1+\beta) \gamma) - \\ Z(g \cdot x) (h_1(x) + \beta h_1(g \cdot x) + (1+\beta) \gamma) (h_2(x) + \beta h_2(g \cdot x) + (1+\beta) \gamma)) = 0$
 
-where $g$ is the root of unity of order $n+1$. With $L_i$ be the $i^{th}$ Lagrange polynomial over $\{g^i\}_{i=1}^{n+1}$, the other proofs can be done as follows:
+This is a bit complex, let's discuss it in three parts:
 
-- to show $Z_1 = 1$, prove $L_1(x)(Z(x)-1) = 0$
-- to show $Z_{n+1} = 1$, prove $L_{n+1}(x)(Z(x)-1) = 0$
+Part one:
+$Z(x) (1+\beta) (f(x) + \gamma) (t(x) + \beta t(g \cdot x) + (1+\beta) \gamma)$
+
+This corresponds to the numerator part, where all $n+1$ parts are expressed using $g*x$.
+It can be simplified as $Z_i * a_i$.
+
+Part two:
+$Z(g \cdot x) (h_1(x) + \beta h_1(g \cdot x) + (1+\beta) \gamma) (h_2(x) + \beta h_2(g \cdot x) + (1+\beta) \gamma)$
+
+This corresponds to the denominator part.
+It can be simplified as $Z_{i+1} * b_i$.
+
+After simplification, we get:
+$(x-g^{n+1}) * ((Z_i * a_i) - (Z_{i+1} * b_i)) = 0$
+This differs from $Z_{i+1} = (a_i/b_i) Z_i$ only by the front factor.
+
+Before discussing the third part, let's talk about the core constraint in the first two parts:
+
+Range of the recursive relationship: This core constraint mainly describes the transition process of $Z$ on points in domain $H$ from $g^1$ to $g^n$:
+When $x = g^1$, it constrains the value of $Z(g^2)$ relative to $Z(g^1)$.
+When $x = g^2$, it constrains the value of $Z(g^3)$ relative to $Z(g^2)$.
+...
+When $x = g^n$, it constrains the value of $Z(g^{n+1})$ relative to $Z(g^n)$.
+
+The beginning and end need to be constrained by other constraints.
+
+Where $g$ is the root of unity of order $n+1$. With $L_i$ be the $i^{th}$ Lagrange polynomial over $\{g^i\}_{i=1}^{n+1}$, the other proofs can be done as follows:
+These boundary conditions need to be proven:
+- to show $Z_1 = 1$, prove $L_1(x)(Z(x)-1) = 0$ (this is the starting point)
+- to show $Z_{n+1} = 1$, prove $L_{n+1}(x)(Z(x)-1) = 0$ (this is the endpoint)
 - to show $h_{1_{n+1}} = h_{2_1}$, prove $L_{n+1}(x)(h_1(x) - h_2(gx)) = 0$
+
+If we try to apply the core constraint at $x = g^{n+1}$, it would constrain the value of $Z(g^{n+2}) = Z(g^1)$ relative to $Z(g^{n+1})$.
+However, the values of $Z(g^1)$ and $Z(g^{n+1})$ are already independently determined by the boundary conditions (both should be 1).
+Therefore, enforcing the core constraint at point $x = g^{n+1}$ is unnecessary, and may even conflict with the boundary conditions (if the prover cheats, $Z(g^{n+1})$ might not equal 1, but the core constraint might still happen to hold).
+
+Now let's look at the third part:
+$(x-g^{n+1})$
+The function of $(x - g^{n+1})$:
+When $x$ is any point in $H$ except $g^{n+1}$ (i.e., $g^1, ..., g^n$), the factor $(x - g^{n+1})$ is non-zero. For the entire expression to equal zero, the core constraint itself must equal zero. This successfully enforces the recursive relationship at the $n$ points from $g^1$ to $g^n$.
+When $x = g^{n+1}$, the factor $(x - g^{n+1})$ equals zero. Therefore, the entire expression $0 \cdot (\text{core constraint})$ necessarily equals zero, regardless of the value of the core constraint at point $x = g^{n+1}$.
+Effect: This factor acts like a "switch" that ensures the core constraint must hold at the points that need to be checked ($g^1$ to $g^n$), while automatically satisfying the condition at the point that doesn't need to be checked ($g^{n+1}$), thereby precisely limiting the checking range to the $n$ points required by the protocol.
 
 Now we describe the whole Plookup protocol (w/ ideal party $I$, paper section 3.1)
 
@@ -74,9 +147,9 @@ Now we describe the whole Plookup protocol (w/ ideal party $I$, paper section 3.
 
 ## Replace ideal party with polynomial commitment
 
-The original Plookup paper only provides the protocol with ideal party $I$. Our implementation, which based on Kevaundray’s work, uses the technique similar to Plonk (or Plonkup) that makes use of KZG commitment to provide the zero-knowledge proof for polynomials.
+The original Plookup paper only provides the protocol with ideal party $I$. Our implementation, which based on Kevaundray's work, uses the technique similar to Plonk (or Plonkup) that makes use of KZG commitment to provide the zero-knowledge proof for polynomials.
 
-Instead of sending polynomials to $I$, the prover commit $f, h_1, h_2, Z$ and a “quotient poly” $q$. The prover uses $q$ to prove that above a~d are satisfied. We want to check the polynomial on every points in $\{g^i\}_{i=1}^{n+1}$, so the vanish polynomial $v(x) = (x-g)(x-g^2)\cdots(x-g^{n+1}) = (x^{n+1}-1)$. The KZG commitment of $q$ is constructed as follows:
+Instead of sending polynomials to $I$, the prover commit $f, h_1, h_2, Z$ and a "quotient poly" $q$. The prover uses $q$ to prove that above a~d are satisfied. We want to check the polynomial on every points in $\{g^i\}_{i=1}^{n+1}$, so the vanish polynomial $v(x) = (x-g)(x-g^2)\cdots(x-g^{n+1}) = (x^{n+1}-1)$. The KZG commitment of $q$ is constructed as follows:
 
 - to prove that $P_a(x) = L_1(x)(Z(x)-1) = 0$, commit $P_a(x)/v(x)$
 - to prove that $P_b(x) = 0$, commit $P_b(x)/v(x)$
@@ -123,7 +196,7 @@ def sorted_by_table(self, witness: list[int], table: list[int]):
 
 ### Generate polynomials
 
-To generate a polynomial from the values evaluated on the roots of unity, we follow Plonkathon’s implementation (see `common_util/poly.py`), and some adjustment needs to be performed accordingly. 
+To generate a polynomial from the values evaluated on the roots of unity, we follow Plonkathon's implementation (see `common_util/poly.py`), and some adjustment needs to be performed accordingly. 
 
 The first is that we want to generate the polynomial of $f$ from the array with length $n$. However, the generator $g$ is of order $n+1$, so we need to pad $f$ to length $n+1$ and make it a polynomial. If we append a random number to $f$, then the polynomial would likely to have degree $n$, not $n-1$ as required in Plookup paper. However, we think that the degree problem does not affect the security of the protocol, so we simply append the last element of $f$ and make it a polynomial of degree $n$.
 
@@ -136,7 +209,7 @@ def round_1(self, witness: list[Scalar]) -> Message1:
     ...
 ```
 
-Second, the list of roots of unity (denote as $H$) is $[g, \ldots, g^{n+1}=1]$ in Plookup paper but $[1, \ldots, g^n]$  in Plonkathon’s implementation. So we need to be careful about the Lagrange polynomials $L_1, L_{n+1}$ and equation b. In particular, we have equation b be $(x-g^n)(\ldots)$ instead of $(x-g^{n+1})(\ldots)$.
+Second, the list of roots of unity (denote as $H$) is $[g, \ldots, g^{n+1}=1]$ in Plookup paper but $[1, \ldots, g^n]$  in Plonkathon's implementation. So we need to be careful about the Lagrange polynomials $L_1, L_{n+1}$ and equation b. In particular, we have equation b be $(x-g^n)(\ldots)$ instead of $(x-g^{n+1})(\ldots)$.
 
 ```python
 def get_poly_b(self) -> Polynomial:
@@ -145,7 +218,7 @@ def get_poly_b(self) -> Polynomial:
     rhs = front * ...
 ```
 
-Lastly, the polynomial multiplication in Plonkathon’s implementation is a little tricky. In short, sometimes we need to use `ifft()` to get correct multiplication result.
+Lastly, the polynomial multiplication in Plonkathon's implementation is a little tricky. In short, sometimes we need to use `ifft()` to get correct multiplication result.
 
 ## Reference
 
